@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Share,
 } from 'react-native';
 import { useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -27,7 +28,7 @@ const DEFAULT_SETTINGS = {
 };
 
 export default function App() {
-  // 現在の画面: 'home' | 'setup' | 'playing' | 'reset' | 'settings'
+  // 現在の画面: 'home' | 'setup' | 'playing' | 'reset' | 'settings' | 'detail' | 'edit'
   const [screen, setScreen] = useState('home');
   // 保存済みセッション一覧
   const [sessions, setSessions] = useState([]);
@@ -38,6 +39,9 @@ export default function App() {
   const [draftRateBalls, setDraftRateBalls] = useState('250');
   const [draftBallButtons, setDraftBallButtons] = useState(['125', '250', '1000']);
   const [draftRotationButtons, setDraftRotationButtons] = useState(['1', '10', '100']);
+
+  // 詳細画面
+  const [detailSession, setDetailSession] = useState(null);
 
   // 編集画面
   const [editDraft, setEditDraft] = useState({});
@@ -54,6 +58,7 @@ export default function App() {
   const [storeName, setStoreName] = useState('');
   const [machineNumber, setMachineNumber] = useState('');
   const [startRotation, setStartRotation] = useState('');
+  const [memo, setMemo] = useState('');
 
   // 遊技中の記録（playing画面）
   const [ballsUsed, setBallsUsed] = useState('');
@@ -132,6 +137,7 @@ export default function App() {
     setStoreName('');
     setMachineNumber('');
     setStartRotation('');
+    setMemo('');
     setBallsUsed('');
     setEndRotation('');
     setStartTime(null);
@@ -169,13 +175,18 @@ export default function App() {
       return;
     }
     if (endRotationNum < startRotationNum) {
-      Alert.alert('入力エラー', '現在の回転数は開始時より大きい値を入力してください');
+      Alert.alert('入力エラー', '現在の回転数は開始時の値より大きい値を入力してください');
       return;
     }
 
     // 合計回転数・合計玉数（累積 + 現セグメント）
     const rotationsNum = accumulatedRotations + Math.max(0, endRotationNum - startRotationNum);
     const totalBallsNum = accumulatedBalls + ballsNum;
+
+    if (rotationsNum <= 0) {
+      Alert.alert('入力エラー', '回転数が0回です。回転していない場合は中断してください');
+      return;
+    }
 
     const now = new Date();
     const newSession = {
@@ -192,6 +203,7 @@ export default function App() {
       endRotation: endRotationNum,
       rotations: rotationsNum,           // 合計回転数（リセット累積込み）
       ballsUsed: totalBallsNum,          // 合計使用玉数（リセット累積込み）
+      memo: memo.trim(),                  // メモ（任意・200文字以内）
       // rotationRate は表示時に動的に計算するため保存しない
     };
 
@@ -253,6 +265,7 @@ export default function App() {
       machineName: item.machineName || '',
       storeName: item.storeName || '',
       machineNumber: item.machineNumber || '',
+      memo: item.memo || '',
       dateYear: year,
       dateMonth: month,
       dateDay: day,
@@ -283,6 +296,16 @@ export default function App() {
       Alert.alert('入力エラー', '日を正しく入力してください');
       return;
     }
+    // 存在しない日付（2月31日、4月31日、うるう年でない2/29 など）を弾く
+    const checkDate = new Date(year, month - 1, day);
+    if (
+      checkDate.getFullYear() !== year ||
+      checkDate.getMonth() !== month - 1 ||
+      checkDate.getDate() !== day
+    ) {
+      Alert.alert('入力エラー', '存在しない日付です');
+      return;
+    }
     // 時刻の検証
     const sh = parseInt(editDraft.startHour, 10);
     const sm = parseInt(editDraft.startMinute, 10);
@@ -295,6 +318,11 @@ export default function App() {
     }
     if (!validTime(eh, em)) {
       Alert.alert('入力エラー', '終了時刻を正しく入力してください');
+      return;
+    }
+    // 終了時刻が開始時刻より前ではないかチェック
+    if (eh * 60 + em < sh * 60 + sm) {
+      Alert.alert('入力エラー', '終了時刻は開始時刻以降にしてください');
       return;
     }
 
@@ -310,6 +338,7 @@ export default function App() {
             machineName: editDraft.machineName.trim(),
             storeName: editDraft.storeName.trim(),
             machineNumber: editDraft.machineNumber.trim(),
+            memo: (editDraft.memo || '').trim(),
             date,
             startTime,
             endTime,
@@ -340,6 +369,38 @@ export default function App() {
     setScreen('playing');
   };
 
+  // 共有テキストを組み立てる（メモは含めない）
+  const buildShareText = (item) => {
+    const lines = ['【遊技記録】'];
+    if (item.date) lines.push(`📅 ${item.date}`);
+    if (item.storeName) lines.push(`🏪 ${item.storeName}`);
+    const machine = `${item.machineName || ''}${item.machineNumber ? `（${item.machineNumber}番台）` : ''}`;
+    if (machine) lines.push(`🎰 ${machine}`);
+    if (item.startTime && item.endTime && item.startTime !== '--') {
+      const dur = calcDuration(item.startTime, item.endTime);
+      lines.push(`⏱ ${item.startTime} - ${item.endTime}${dur ? `（${dur}）` : ''}`);
+    }
+    lines.push('');
+    lines.push(`🔄 総回転数: ${item.rotations.toLocaleString()}`);
+    lines.push(`⚪ 総使用玉数: ${item.ballsUsed.toLocaleString()}`);
+    const rate = item.ballsUsed > 0
+      ? ((item.rotations / item.ballsUsed) * settings.rateBalls).toFixed(1)
+      : '--';
+    lines.push(`✨ ${settings.rateBalls}玉あたり回転数: ${rate}`);
+    lines.push('');
+    lines.push('#パチカウント');
+    return lines.join('\n');
+  };
+
+  // セッションを共有する
+  const handleShareSession = async (item) => {
+    try {
+      await Share.share({ message: buildShareText(item) });
+    } catch (_) {
+      Alert.alert('エラー', '共有に失敗しました');
+    }
+  };
+
   // セッション削除
   const handleDeleteSession = (id) => {
     Alert.alert(
@@ -355,6 +416,7 @@ export default function App() {
             try {
               await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
               setSessions(updated);
+              setScreen('home');
             } catch (error) {
               Alert.alert('エラー', 'データの削除に失敗しました');
             }
@@ -368,7 +430,7 @@ export default function App() {
   const handleAbort = () => {
     Alert.alert(
       '遊技を中断しますか？',
-      'このセッションのデータは保存されません',
+      'この遊技のデータは保存されません',
       [
         { text: 'キャンセル', style: 'cancel' },
         {
@@ -429,6 +491,19 @@ export default function App() {
     setScreen('playing');
   };
 
+  // 開始時刻〜終了時刻から所要時間を計算（"HH:MM" 文字列）
+  const calcDuration = (start, end) => {
+    if (!start || !end || start === '--' || end === '--') return '';
+    const [sh, sm] = start.split(':').map(Number);
+    const [eh, em] = end.split(':').map(Number);
+    if ([sh, sm, eh, em].some(isNaN)) return '';
+    let mins = (eh * 60 + em) - (sh * 60 + sm);
+    if (mins < 0) return '';
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return `${h}時間${m}分`;
+  };
+
   // 累積込みの合計回転数を計算するヘルパー
   const calcTotalRotations = () => {
     const end = parseFloat(endRotation);
@@ -455,9 +530,13 @@ export default function App() {
       <View style={styles.container}>
         <StatusBar style="dark" />
         <View style={styles.homeHeader}>
-          <Text style={styles.title}>回転カウンター</Text>
-          <TouchableOpacity style={styles.settingsButton} onPress={handleOpenSettings}>
-            <Text style={styles.settingsButtonText}>設定</Text>
+          <Text style={styles.title}>パチカウント</Text>
+          <TouchableOpacity
+            style={styles.settingsButton}
+            onPress={handleOpenSettings}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.settingsButtonText}>⚙</Text>
           </TouchableOpacity>
         </View>
 
@@ -476,62 +555,47 @@ export default function App() {
             renderItem={({ item }) => (
               <TouchableOpacity
                 style={styles.sessionCard}
-                activeOpacity={0.8}
-                onPress={() => {
-                  Alert.alert(
-                    item.machineName || '機種未入力',
-                    item.date,
-                    [
-                      { text: '編集する', onPress: () => handleOpenEdit(item) },
-                      { text: '続きから遊技', onPress: () => handleContinueSession(item) },
-                      { text: '削除', style: 'destructive', onPress: () => handleDeleteSession(item.id) },
-                      { text: 'キャンセル', style: 'cancel' },
-                    ]
-                  );
-                }}
+                activeOpacity={0.7}
+                onPress={() => { setDetailSession(item); setScreen('detail'); }}
               >
-                {/* カードヘッダー：日付・時刻 */}
-                <View style={styles.cardHeader}>
-                  <Text style={styles.sessionDate}>{item.date}</Text>
-                  <Text style={styles.sessionTime}>
-                    {item.startTime} - {item.endTime}
-                  </Text>
-                </View>
-
-                {/* 店舗名 */}
-                {item.storeName ? (
-                  <Text style={styles.sessionStore}>{item.storeName}</Text>
-                ) : null}
-
-                {/* 機種名・台番号 */}
-                <Text style={styles.sessionMachine}>
-                  {item.machineName || '機種未入力'}
-                  {item.machineNumber ? `（${item.machineNumber}番台）` : ''}
-                </Text>
-
-                {/* 統計の横並び表示 */}
-                <View style={styles.statsRow}>
-                  <View style={styles.statItem}>
-                    <Text style={styles.statLabel}>遊技回転</Text>
-                    <Text style={styles.statValue}>
-                      {item.rotations.toLocaleString()}
-                    </Text>
-                  </View>
-                  <View style={styles.statItem}>
-                    <Text style={styles.statLabel}>使用玉</Text>
-                    <Text style={styles.statValue}>
-                      {item.ballsUsed.toLocaleString()}
-                    </Text>
-                  </View>
-                  {/* 玉あたり回転は色付きで強調（現在の基準玉数で動的計算） */}
-                  <View style={[styles.statItem, styles.rateItem]}>
-                    <Text style={styles.statLabel}>{settings.rateBalls}玉回転</Text>
-                    <Text style={[styles.statValue, styles.rateValue]}>
+                {/* ヒーロー：回転率を主役表示 */}
+                <View style={styles.cardHero}>
+                  <View style={styles.cardHeroLeft}>
+                    <Text style={styles.cardRateValue}>
                       {item.ballsUsed > 0
                         ? ((item.rotations / item.ballsUsed) * settings.rateBalls).toFixed(1)
                         : '--'}
                     </Text>
+                    <Text style={styles.cardRateLabel}>{settings.rateBalls}玉あたり</Text>
                   </View>
+                  <View style={styles.cardHeroRight}>
+                    <Text style={styles.cardDate}>
+                      {item.date}{item.memo ? '  📝' : ''}
+                    </Text>
+                    <Text style={styles.cardTime}>{item.startTime} – {item.endTime}</Text>
+                  </View>
+                </View>
+
+                {/* 区切り線 */}
+                <View style={styles.cardDivider} />
+
+                {/* 台情報 */}
+                {item.storeName ? (
+                  <Text style={styles.cardStore}>🏪  {item.storeName}</Text>
+                ) : null}
+                <Text style={styles.cardMachine}>
+                  🎰  {item.machineName || '機種未入力'}
+                  {item.machineNumber ? `（${item.machineNumber}番台）` : ''}
+                </Text>
+
+                {/* 集計値 */}
+                <View style={styles.cardCountsRow}>
+                  <Text style={styles.cardCount}>
+                    🔄  {item.rotations.toLocaleString()} 回転
+                  </Text>
+                  <Text style={styles.cardCount}>
+                    ⚪  {item.ballsUsed.toLocaleString()} 玉
+                  </Text>
                 </View>
               </TouchableOpacity>
             )}
@@ -561,7 +625,26 @@ export default function App() {
         <StatusBar style="dark" />
         <ScrollView showsVerticalScrollIndicator={false}>
           <Text style={styles.title}>台情報を入力</Text>
-          <Text style={styles.subtitle}>座った台の情報を入力してください</Text>
+          <Text style={styles.subtitle}>現在の台の情報を入力してください</Text>
+
+          {/* 開始時の回転数（必須・最上部で目立たせる） */}
+          <View style={styles.startRotationBlock}>
+            <Text style={styles.startRotationLabel}>
+              開始時の回転数 <Text style={styles.required}>必須</Text>
+            </Text>
+            <Text style={styles.hint}>
+              現在の回転数表示をそのまま入力してください
+            </Text>
+            <TextInput
+              style={styles.inputLarge}
+              placeholder="例: 350"
+              value={startRotation}
+              onChangeText={setStartRotation}
+              keyboardType="numeric"
+              maxLength={7}
+              returnKeyType="done"
+            />
+          </View>
 
           {/* 機種名（任意）+ 履歴候補 */}
           <Text style={styles.label}>
@@ -574,6 +657,7 @@ export default function App() {
             onChangeText={(text) => { setMachineName(text); setShowMachineSuggestions(true); }}
             onFocus={() => setShowMachineSuggestions(true)}
             onBlur={() => setTimeout(() => setShowMachineSuggestions(false), 200)}
+            maxLength={50}
             returnKeyType="next"
           />
           {showMachineSuggestions && machineNameHistory.filter((n) =>
@@ -600,11 +684,12 @@ export default function App() {
           </Text>
           <TextInput
             style={styles.input}
-            placeholder="例: ○○パチンコ"
+            placeholder="例: パーラー○○店"
             value={storeName}
             onChangeText={(text) => { setStoreName(text); setShowStoreSuggestions(true); }}
             onFocus={() => setShowStoreSuggestions(true)}
             onBlur={() => setTimeout(() => setShowStoreSuggestions(false), 200)}
+            maxLength={50}
             returnKeyType="next"
           />
           {showStoreSuggestions && storeNameHistory.filter((n) =>
@@ -635,28 +720,27 @@ export default function App() {
             value={machineNumber}
             onChangeText={setMachineNumber}
             keyboardType="numeric"
+            maxLength={5}
             returnKeyType="next"
           />
 
-          {/* 開始時の回転数（必須） */}
+          {/* メモ（任意・200文字以内） */}
           <Text style={styles.label}>
-            開始時の回転数 <Text style={styles.required}>必須</Text>
-          </Text>
-          <Text style={styles.hint}>
-            今の台の回転数表示をそのまま入力してください
+            メモ <Text style={styles.optional}>任意・200文字以内</Text>
           </Text>
           <TextInput
-            style={styles.inputLarge}
-            placeholder="例: 350"
-            value={startRotation}
-            onChangeText={setStartRotation}
-            keyboardType="numeric"
-            returnKeyType="done"
+            style={styles.memoInput}
+            value={memo}
+            onChangeText={setMemo}
+            multiline
+            maxLength={200}
+            textAlignVertical="top"
           />
+          <Text style={styles.memoCounter}>{memo.length} / 200</Text>
 
           {/* 遊技スタートボタン */}
           <TouchableOpacity style={styles.primaryButton} onPress={handleStartSession}>
-            <Text style={styles.primaryButtonText}>遊技スタート</Text>
+            <Text style={styles.primaryButtonText}>遊技開始</Text>
           </TouchableOpacity>
 
           {/* 戻るボタン */}
@@ -675,6 +759,107 @@ export default function App() {
   }
 
   // ========================================
+  // 詳細画面（detail）
+  // ========================================
+  if (screen === 'detail') {
+    const item = detailSession;
+    if (!item) {
+      // 安全策: detailSession 未設定なら home へ
+      setScreen('home');
+      return null;
+    }
+    const duration = calcDuration(item.startTime, item.endTime);
+    const rate = item.ballsUsed > 0
+      ? ((item.rotations / item.ballsUsed) * settings.rateBalls).toFixed(1)
+      : '--';
+
+    return (
+      <View style={styles.container}>
+        <StatusBar style="dark" />
+
+        {/* ヘッダー */}
+        <View style={styles.detailHeader}>
+          <TouchableOpacity onPress={() => setScreen('home')} style={styles.detailBackButton}>
+            <Text style={styles.detailBackText}>← 戻る</Text>
+          </TouchableOpacity>
+          <Text style={styles.detailTitle}>記録の詳細</Text>
+          <View style={styles.detailHeaderSpacer} />
+        </View>
+
+        <ScrollView showsVerticalScrollIndicator={false}>
+          {/* 日時 */}
+          <View style={styles.detailDateBlock}>
+            <Text style={styles.detailDateText}>{item.date}</Text>
+            <Text style={styles.detailTimeText}>
+              {item.startTime} - {item.endTime}
+              {duration ? `（${duration}）` : ''}
+            </Text>
+          </View>
+
+          {/* 店舗・台情報 */}
+          <Text style={styles.detailSectionLabel}>店舗・台情報</Text>
+          <View style={styles.detailSection}>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>店舗名</Text>
+              <Text style={styles.detailValue}>{item.storeName || '-'}</Text>
+            </View>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>機種名</Text>
+              <Text style={styles.detailValue}>{item.machineName || '-'}</Text>
+            </View>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>台番号</Text>
+              <Text style={styles.detailValue}>{item.machineNumber || '-'}</Text>
+            </View>
+          </View>
+
+          {/* 遊技データ */}
+          <Text style={styles.detailSectionLabel}>遊技データ</Text>
+          <View style={styles.detailSection}>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>総回転数</Text>
+              <Text style={styles.detailValue}>{item.rotations.toLocaleString()}</Text>
+            </View>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>総使用玉数</Text>
+              <Text style={styles.detailValue}>{item.ballsUsed.toLocaleString()}</Text>
+            </View>
+            <View style={styles.detailDivider} />
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>{settings.rateBalls}玉あたり回転数</Text>
+              <Text style={[styles.detailValue, styles.detailRateValue]}>{rate}</Text>
+            </View>
+          </View>
+
+          {/* メモ（あれば表示） */}
+          {item.memo ? (
+            <>
+              <Text style={styles.detailSectionLabel}>メモ</Text>
+              <View style={styles.detailSection}>
+                <Text style={styles.detailMemoText}>{item.memo}</Text>
+              </View>
+            </>
+          ) : null}
+
+          {/* アクションボタン */}
+          <TouchableOpacity style={styles.primaryButton} onPress={() => handleOpenEdit(item)}>
+            <Text style={styles.primaryButtonText}>編集する</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.primaryButton} onPress={() => handleContinueSession(item)}>
+            <Text style={styles.primaryButtonText}>続きから遊技</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.shareButton} onPress={() => handleShareSession(item)}>
+            <Text style={styles.shareButtonText}>共有する</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeleteSession(item.id)}>
+            <Text style={styles.deleteButtonText}>削除する</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // ========================================
   // 編集画面（edit）
   // ========================================
   if (screen === 'edit') {
@@ -689,16 +874,32 @@ export default function App() {
 
           <Text style={styles.label}>機種名</Text>
           <TextInput style={styles.input} value={editDraft.machineName}
-            onChangeText={(v) => updateEditDraft('machineName', v)} />
+            onChangeText={(v) => updateEditDraft('machineName', v)}
+            maxLength={50} />
 
           <Text style={styles.label}>店舗名</Text>
           <TextInput style={styles.input} value={editDraft.storeName}
-            onChangeText={(v) => updateEditDraft('storeName', v)} />
+            onChangeText={(v) => updateEditDraft('storeName', v)}
+            maxLength={50} />
 
           <Text style={styles.label}>台番号</Text>
           <TextInput style={styles.input} value={editDraft.machineNumber}
             onChangeText={(v) => updateEditDraft('machineNumber', v)}
-            keyboardType="numeric" />
+            keyboardType="numeric"
+            maxLength={5} />
+
+          <Text style={styles.label}>
+            メモ <Text style={styles.optional}>200文字以内</Text>
+          </Text>
+          <TextInput
+            style={styles.memoInput}
+            value={editDraft.memo || ''}
+            onChangeText={(v) => updateEditDraft('memo', v)}
+            multiline
+            maxLength={200}
+            textAlignVertical="top"
+          />
+          <Text style={styles.memoCounter}>{(editDraft.memo || '').length} / 200</Text>
 
           <Text style={styles.label}>日付</Text>
           <View style={styles.dateRow}>
@@ -803,7 +1004,7 @@ export default function App() {
 
           {/* 基準玉数 */}
           <Text style={styles.label}>回転率の基準玉数</Text>
-          <Text style={styles.hint}>例: 250（250玉あたりの回転数で計算）</Text>
+          <Text style={styles.hint}>例: 250（指定した玉数あたりの回転数で計算）</Text>
           <TextInput
             style={styles.input}
             value={draftRateBalls}
@@ -814,7 +1015,7 @@ export default function App() {
 
           {/* 使用玉数ボタンの値 */}
           <Text style={styles.label}>使用玉数ボタンの値（3つ）</Text>
-          <Text style={styles.hint}>遊技中に表示される＋ボタンの加算量</Text>
+          <Text style={styles.hint}>遊技中に表示される±ボタンの増減量</Text>
           <View style={styles.settingsRow}>
             {draftBallButtons.map((val, i) => (
               <TextInput
@@ -834,7 +1035,7 @@ export default function App() {
 
           {/* 回転数ボタンの値 */}
           <Text style={styles.label}>回転数ボタンの値（3つ）</Text>
-          <Text style={styles.hint}>遊技中に表示される＋ボタンの加算量</Text>
+          <Text style={styles.hint}>遊技中に表示される±ボタンの増減量</Text>
           <View style={styles.settingsRow}>
             {draftRotationButtons.map((val, i) => (
               <TextInput
@@ -910,6 +1111,7 @@ export default function App() {
           value={newResetRotation}
           onChangeText={setNewResetRotation}
           keyboardType="numeric"
+          maxLength={7}
           autoFocus
         />
 
@@ -975,6 +1177,7 @@ export default function App() {
             value={endRotation}
             onChangeText={setEndRotation}
             keyboardType="numeric"
+            maxLength={7}
           />
           <View style={styles.btnRow}>
             {settings.rotationButtons.map((n) => (
@@ -1012,6 +1215,7 @@ export default function App() {
             value={ballsUsed}
             onChangeText={setBallsUsed}
             keyboardType="numeric"
+            maxLength={7}
           />
           <View style={styles.btnRow}>
             {settings.ballButtons.map((n) => (
@@ -1036,12 +1240,13 @@ export default function App() {
             ))}
           </View>
         </View>
+      </View>
 
-        {/* リセットして継続ボタン */}
+      {/* ===== リセットして続けるボタン（独立配置・常時表示） ===== */}
+      <View style={styles.resetButtonRow}>
         <TouchableOpacity style={styles.resetButton} onPress={handleOpenReset}>
-          <Text style={styles.resetButtonText}>リセットして継続</Text>
+          <Text style={styles.resetButtonText}>リセットして続ける</Text>
         </TouchableOpacity>
-
       </View>
 
       {/* ===== 下部固定: 終了・中断ボタン ===== */}
@@ -1064,21 +1269,22 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f0f4f8',
+    backgroundColor: '#F8F9FC',
     paddingTop: 60,
     paddingHorizontal: 20,
   },
   title: {
-    fontSize: 26,
-    fontWeight: 'bold',
+    fontSize: 24,
+    fontWeight: '700',
     textAlign: 'center',
-    color: '#1a1a2e',
+    color: '#111827',
     marginBottom: 6,
+    letterSpacing: -0.3,
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 13,
     textAlign: 'center',
-    color: '#888',
+    color: '#9CA3AF',
     marginBottom: 24,
   },
 
@@ -1090,12 +1296,13 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 18,
-    color: '#aaa',
+    color: '#9CA3AF',
+    fontWeight: '500',
     marginBottom: 8,
   },
   emptySubText: {
-    fontSize: 14,
-    color: '#bbb',
+    fontSize: 13,
+    color: '#9CA3AF',
   },
 
   // ホームヘッダー（タイトル + 設定ボタン）
@@ -1103,22 +1310,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 6,
+    marginBottom: 12,
+    minHeight: 44,
     position: 'relative',
   },
   settingsButton: {
     position: 'absolute',
     right: 0,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#ddd',
-    backgroundColor: '#fff',
+    borderColor: '#E5E7EB',
   },
   settingsButtonText: {
-    fontSize: 13,
-    color: '#555',
+    fontSize: 20,
+    color: '#6B7280',
+    lineHeight: 24,
   },
 
   // 設定画面
@@ -1129,14 +1340,175 @@ const styles = StyleSheet.create({
   },
   settingsInput: {
     flex: 1,
-    backgroundColor: '#fff',
-    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
     padding: 14,
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: '#E5E7EB',
     textAlign: 'center',
+    color: '#111827',
+  },
+
+  // 詳細画面
+  detailHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  detailBackButton: {
+    paddingVertical: 4,
+    width: 70,
+  },
+  detailBackText: {
+    fontSize: 15,
+    color: '#0066FF',
+    fontWeight: '500',
+  },
+  detailTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+    letterSpacing: -0.2,
+  },
+  detailHeaderSpacer: {
+    width: 70,
+  },
+  detailDateBlock: {
+    alignItems: 'center',
+    marginBottom: 18,
+  },
+  detailDateText: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 4,
+    letterSpacing: -0.2,
+  },
+  detailTimeText: {
+    fontSize: 13,
+    color: '#6B7280',
+  },
+  detailSectionLabel: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    fontWeight: '600',
+    marginBottom: 8,
+    marginLeft: 4,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  detailSection: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    paddingVertical: 4,
+    paddingHorizontal: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  detailLabel: {
+    fontSize: 13,
+    color: '#6B7280',
+  },
+  detailValue: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  detailRateValue: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#0066FF',
+    letterSpacing: -0.5,
+  },
+  detailDivider: {
+    height: 1,
+    backgroundColor: '#F3F4F6',
+    marginVertical: 0,
+  },
+  shareButton: {
+    height: 48,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+  },
+  shareButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#0066FF',
+  },
+  deleteButton: {
+    height: 48,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    backgroundColor: '#FFFFFF',
+  },
+  deleteButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FF3B30',
+  },
+  // メモ表示（詳細画面）
+  detailMemoText: {
+    fontSize: 14,
+    color: '#374151',
+    paddingVertical: 12,
+    lineHeight: 22,
+  },
+  // 開始時の回転数（setup画面最上部の強調ブロック）
+  startRotationBlock: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 18,
+    marginTop: 8,
+    marginBottom: 12,
+    borderWidth: 1.5,
+    borderColor: '#0066FF',
+  },
+  startRotationLabel: {
+    fontSize: 14,
+    color: '#111827',
+    fontWeight: '600',
+    marginBottom: 6,
+    letterSpacing: 0.2,
+  },
+
+  // メモ入力欄（setup・編集画面）
+  memoInput: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 14,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    minHeight: 90,
+    maxHeight: 140,
+    lineHeight: 20,
+    color: '#111827',
+  },
+  memoCounter: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    textAlign: 'right',
+    marginTop: 4,
   },
 
   // 編集画面の時刻・回転数の横並び
@@ -1155,22 +1527,23 @@ const styles = StyleSheet.create({
   },
   dateInput: {
     flex: 1,
-    backgroundColor: '#fff',
-    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 8,
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: '#E5E7EB',
     textAlign: 'center',
+    color: '#111827',
   },
   dateInputYear: {
     flex: 1.5,
   },
   dateSeparator: {
     fontSize: 18,
-    color: '#888',
+    color: '#9CA3AF',
   },
   // 時刻入力（時:分）
   timeRow: {
@@ -1180,28 +1553,29 @@ const styles = StyleSheet.create({
   },
   timeInput: {
     flex: 1,
-    backgroundColor: '#fff',
-    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 4,
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: '#E5E7EB',
     textAlign: 'center',
+    color: '#111827',
   },
   timeSeparator: {
     fontSize: 18,
-    color: '#888',
+    color: '#9CA3AF',
   },
 
   // 入力候補リスト
   suggestionsContainer: {
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 10,
-    marginTop: 2,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    marginTop: 4,
     marginBottom: 4,
     overflow: 'hidden',
   },
@@ -1209,26 +1583,27 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: '#F3F4F6',
   },
   suggestionText: {
-    fontSize: 15,
-    color: '#333',
+    fontSize: 14,
+    color: '#374151',
   },
 
   resetDefaultButton: {
-    height: 40,
+    height: 42,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 8,
     borderWidth: 1,
-    borderColor: '#ffcdd2',
-    backgroundColor: '#fff0f0',
+    borderColor: '#FECACA',
+    backgroundColor: '#FFFFFF',
   },
   resetDefaultButtonText: {
     fontSize: 14,
-    color: '#e53935',
+    color: '#FF3B30',
+    fontWeight: '500',
   },
 
   // セッションカード
@@ -1236,256 +1611,279 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   sessionCard: {
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    padding: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
     marginBottom: 12,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
   },
-  cardHeader: {
+  // カードヒーロー（回転率主役）
+  cardHero: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
-    marginBottom: 6,
-  },
-  sessionDate: {
-    fontSize: 12,
-    color: '#aaa',
-  },
-  sessionTime: {
-    fontSize: 12,
-    color: '#aaa',
-  },
-  sessionStore: {
-    fontSize: 12,
-    color: '#888',
-    marginBottom: 2,
-  },
-  sessionMachine: {
-    fontSize: 17,
-    fontWeight: 'bold',
-    color: '#1a1a2e',
     marginBottom: 12,
   },
-  // 統計の横並び
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  statItem: {
-    alignItems: 'center',
+  cardHeroLeft: {
     flex: 1,
   },
-  statLabel: {
+  cardHeroRight: {
+    alignItems: 'flex-end',
+  },
+  cardRateValue: {
+    fontSize: 34,
+    fontWeight: '700',
+    color: '#0066FF',
+    lineHeight: 38,
+    letterSpacing: -0.5,
+  },
+  cardRateLabel: {
     fontSize: 11,
-    color: '#999',
-    marginBottom: 2,
+    color: '#9CA3AF',
+    marginTop: 2,
+    letterSpacing: 0.3,
   },
-  statValue: {
+  cardDate: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  cardTime: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    marginTop: 2,
+  },
+  cardDivider: {
+    height: 1,
+    backgroundColor: '#F3F4F6',
+    marginVertical: 4,
+    marginBottom: 12,
+  },
+  cardStore: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  cardMachine: {
     fontSize: 15,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 10,
   },
-  // 玉あたり回転だけ色を変える
-  rateItem: {
-    backgroundColor: '#eef4ff',
-    borderRadius: 8,
-    paddingVertical: 4,
+  cardCountsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
-  rateValue: {
-    color: '#3a86ff',
-    fontSize: 17,
+  cardCount: {
+    fontSize: 13,
+    color: '#374151',
+    fontWeight: '500',
   },
 
   // フォーム共通
   label: {
-    fontSize: 14,
-    color: '#555',
+    fontSize: 13,
+    color: '#374151',
+    fontWeight: '600',
     marginTop: 18,
-    marginBottom: 6,
+    marginBottom: 8,
+    letterSpacing: 0.2,
   },
   required: {
-    color: '#ff4757',
-    fontSize: 12,
+    color: '#FF3B30',
+    fontSize: 11,
+    fontWeight: '500',
   },
   optional: {
-    color: '#aaa',
-    fontSize: 12,
+    color: '#9CA3AF',
+    fontSize: 11,
+    fontWeight: '400',
   },
   hint: {
     fontSize: 12,
-    color: '#aaa',
-    marginBottom: 6,
-    marginTop: -4,
+    color: '#9CA3AF',
+    marginBottom: 8,
+    marginTop: -2,
   },
   input: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
     padding: 14,
-    fontSize: 16,
+    fontSize: 15,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: '#E5E7EB',
+    color: '#111827',
   },
   // 遊技中画面用の大きい入力欄
   inputLarge: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
     padding: 16,
     fontSize: 28,
-    fontWeight: 'bold',
+    fontWeight: '700',
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: '#E5E7EB',
     textAlign: 'center',
-    color: '#1a1a2e',
+    color: '#111827',
+    letterSpacing: -0.5,
   },
 
   // 遊技中画面のルートコンテナ
   playingContainer: {
     flex: 1,
-    backgroundColor: '#f0f4f8',
-    paddingTop: 44,
+    backgroundColor: '#F8F9FC',
+    paddingTop: 36,
   },
 
   // 遊技中画面の入力エリア全体
   playingContent: {
     flex: 1,
     paddingHorizontal: 16,
-    paddingTop: 4,
-    justifyContent: 'space-between',
+    paddingTop: 6,
+    justifyContent: 'center',
+  },
+  // リセットして続けるボタンの独立配置行（入力エリアとフッターの間）
+  resetButtonRow: {
+    paddingHorizontal: 16,
+    paddingBottom: 4,
   },
 
   // 遊技中画面の下部固定フッター
   playingFooter: {
     paddingHorizontal: 16,
-    paddingBottom: 24,
-    paddingTop: 8,
+    paddingBottom: 18,
+    paddingTop: 6,
     borderTopWidth: 1,
-    borderTopColor: '#dde4ee',
-    backgroundColor: '#f0f4f8',
+    borderTopColor: '#F3F4F6',
+    backgroundColor: '#FFFFFF',
   },
 
   playingStoreName: {
     fontSize: 11,
-    color: '#7a9acc',
+    color: '#9CA3AF',
     marginBottom: 1,
+    letterSpacing: 0.3,
   },
   playingMachineName: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#aac4ff',
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
     marginBottom: 4,
   },
   playingLabel: {
-    fontSize: 13,
-    color: '#555',
-    fontWeight: 'bold',
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '600',
+    letterSpacing: 0.3,
+    marginBottom: 4,
   },
 
   // 遊技中の入力欄
   playingInput: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    height: 62,
-    fontSize: 28,
-    fontWeight: 'bold',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    height: 54,
+    fontSize: 26,
+    fontWeight: '700',
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: '#E5E7EB',
     textAlign: 'center',
-    color: '#1a1a2e',
+    color: '#111827',
+    letterSpacing: -0.5,
   },
 
   // ボタン行（+/- 共通の横並び）
   btnRow: {
     flexDirection: 'row',
     gap: 6,
-    marginTop: 6,
+    marginTop: 5,
   },
   // 加算ボタン（青・減算の2倍の高さ）
   btnIncrement: {
     flex: 1,
-    height: 64,
-    backgroundColor: '#e8f0fe',
-    borderRadius: 8,
+    height: 54,
+    backgroundColor: '#0066FF',
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#c5d8ff',
   },
   btnIncrementText: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: '#3a86ff',
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   // 減算ボタン（赤・加算の半分の高さ）
   btnDecrement: {
     flex: 1,
-    height: 32,
-    backgroundColor: '#fff0f0',
-    borderRadius: 8,
+    height: 28,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#ffcdd2',
+    borderColor: '#E5E7EB',
   },
   btnDecrementText: {
     fontSize: 13,
-    fontWeight: 'bold',
-    color: '#e53935',
+    fontWeight: '600',
+    color: '#6B7280',
   },
 
-  // リセットして継続ボタン
+  // リセットして続けるボタン
   resetButton: {
-    height: 36,
-    borderRadius: 8,
+    height: 42,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#f0a500',
-    backgroundColor: '#fffbf0',
-    marginTop: 8,
+    borderColor: '#DBEAFE',
+    backgroundColor: '#EFF6FF',
   },
   resetButtonText: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: '#f0a500',
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0066FF',
   },
 
   // 区切り線
   divider: {
     height: 1,
-    backgroundColor: '#dde4ee',
-    marginVertical: 10,
+    backgroundColor: '#F3F4F6',
+    marginVertical: 8,
   },
 
   // 遊技中画面の上部エリア
   rateDisplay: {
-    backgroundColor: '#1a1a2e',
-    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 10,
     paddingHorizontal: 20,
     alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
   rateDisplayValue: {
-    fontSize: 44,
-    fontWeight: 'bold',
-    color: '#fff',
-    lineHeight: 52,
+    fontSize: 40,
+    fontWeight: '700',
+    color: '#0066FF',
+    lineHeight: 46,
+    letterSpacing: -1,
   },
   rateUnit: {
-    fontSize: 12,
-    color: '#aac4ff',
+    fontSize: 11,
+    color: '#9CA3AF',
     marginTop: 2,
+    letterSpacing: 0.3,
   },
 
   // 総回転数・総使用玉数の横並び表示
   totalRow: {
     flexDirection: 'row',
-    marginTop: 10,
-    paddingTop: 10,
+    marginTop: 8,
+    paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: '#2e3a5a',
+    borderTopColor: '#F3F4F6',
     width: '100%',
   },
   totalItem: {
@@ -1494,41 +1892,44 @@ const styles = StyleSheet.create({
   },
   totalDivider: {
     width: 1,
-    backgroundColor: '#2e3a5a',
+    backgroundColor: '#F3F4F6',
   },
   totalLabel: {
     fontSize: 11,
-    color: '#aac4ff',
+    color: '#9CA3AF',
     marginBottom: 2,
+    letterSpacing: 0.3,
   },
   totalValue: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
+    fontWeight: '700',
+    color: '#111827',
   },
 
   // ボタン（ホーム・setup 画面共通）
   primaryButton: {
-    backgroundColor: '#3a86ff',
-    height: 50,
-    borderRadius: 12,
+    backgroundColor: '#0066FF',
+    height: 48,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 12,
   },
   primaryButtonText: {
-    color: '#fff',
+    color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
+    letterSpacing: 0.2,
   },
   secondaryButton: {
-    height: 36,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 4,
+    marginTop: 6,
   },
   secondaryButtonText: {
-    color: '#aaa',
+    color: '#9CA3AF',
     fontSize: 14,
+    fontWeight: '500',
   },
 });
