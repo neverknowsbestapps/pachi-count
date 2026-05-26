@@ -16,18 +16,42 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ローカルストレージのキー
 const STORAGE_KEY = '@rotation_sessions_v3';
+const SETTINGS_KEY = '@rotation_settings_v1';
+const NAMES_KEY = '@rotation_names_v1';
 
-// 125玉あたりの回転数で回転率を計算する
-const RATE_BALLS = 125;
+// 設定のデフォルト値
+const DEFAULT_SETTINGS = {
+  rateBalls: 250,
+  ballButtons: [125, 250, 1000],
+  rotationButtons: [1, 10, 100],
+};
 
 export default function App() {
-  // 現在の画面: 'home' | 'setup' | 'playing'
+  // 現在の画面: 'home' | 'setup' | 'playing' | 'reset' | 'settings'
   const [screen, setScreen] = useState('home');
   // 保存済みセッション一覧
   const [sessions, setSessions] = useState([]);
 
+  // グローバル設定
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  // 設定画面の編集中ドラフト
+  const [draftRateBalls, setDraftRateBalls] = useState('250');
+  const [draftBallButtons, setDraftBallButtons] = useState(['125', '250', '1000']);
+  const [draftRotationButtons, setDraftRotationButtons] = useState(['1', '10', '100']);
+
+  // 編集画面
+  const [editDraft, setEditDraft] = useState({});
+  const updateEditDraft = (key, value) => setEditDraft((prev) => ({ ...prev, [key]: value }));
+
+  // 機種名・店舗名の入力履歴
+  const [machineNameHistory, setMachineNameHistory] = useState([]);
+  const [storeNameHistory, setStoreNameHistory] = useState([]);
+  const [showMachineSuggestions, setShowMachineSuggestions] = useState(false);
+  const [showStoreSuggestions, setShowStoreSuggestions] = useState(false);
+
   // 台情報入力（setup画面）
   const [machineName, setMachineName] = useState('');
+  const [storeName, setStoreName] = useState('');
   const [machineNumber, setMachineNumber] = useState('');
   const [startRotation, setStartRotation] = useState('');
 
@@ -39,13 +63,56 @@ export default function App() {
   // リセット関連
   const [accumulatedRotations, setAccumulatedRotations] = useState(0); // リセット前の累積回転数
   const [accumulatedBalls, setAccumulatedBalls] = useState(0);         // リセット前の累積使用玉数
-  const [resetCount, setResetCount] = useState(0);                     // リセット回数
   const [newResetRotation, setNewResetRotation] = useState('');        // リセット後の開始回転数入力
 
-  // アプリ起動時にデータを読み込む
+  // アプリ起動時にデータ・設定・履歴を読み込む
   useEffect(() => {
     loadSessions();
+    loadSettings();
+    loadNames();
   }, []);
+
+  // AsyncStorageから設定を読み込む
+  const loadSettings = async () => {
+    try {
+      const data = await AsyncStorage.getItem(SETTINGS_KEY);
+      if (data !== null) {
+        setSettings(JSON.parse(data));
+      }
+    } catch (_) {
+      // 読み込み失敗時はデフォルト値のまま
+    }
+  };
+
+  // 機種名・店舗名の履歴を読み込む
+  const loadNames = async () => {
+    try {
+      const data = await AsyncStorage.getItem(NAMES_KEY);
+      if (data !== null) {
+        const { machineNames = [], storeNames = [] } = JSON.parse(data);
+        setMachineNameHistory(machineNames);
+        setStoreNameHistory(storeNames);
+      }
+    } catch (_) {}
+  };
+
+  // 機種名・店舗名の履歴に追加して保存する（重複除去・最新順・最大30件）
+  const saveNameHistory = async (newMachineName, newStoreName) => {
+    const addToHistory = (history, newValue) => {
+      if (!newValue) return history;
+      return [newValue, ...history.filter((v) => v !== newValue)].slice(0, 30);
+    };
+    const updatedMachineNames = addToHistory(machineNameHistory, newMachineName);
+    const updatedStoreNames = addToHistory(storeNameHistory, newStoreName);
+    setMachineNameHistory(updatedMachineNames);
+    setStoreNameHistory(updatedStoreNames);
+    try {
+      await AsyncStorage.setItem(
+        NAMES_KEY,
+        JSON.stringify({ machineNames: updatedMachineNames, storeNames: updatedStoreNames })
+      );
+    } catch (_) {}
+  };
 
   // AsyncStorageからデータを読み込む
   const loadSessions = async () => {
@@ -62,6 +129,7 @@ export default function App() {
   // フォームを全リセット
   const resetForm = () => {
     setMachineName('');
+    setStoreName('');
     setMachineNumber('');
     setStartRotation('');
     setBallsUsed('');
@@ -69,7 +137,6 @@ export default function App() {
     setStartTime(null);
     setAccumulatedRotations(0);
     setAccumulatedBalls(0);
-    setResetCount(0);
     setNewResetRotation('');
   };
 
@@ -79,10 +146,10 @@ export default function App() {
       Alert.alert('入力エラー', '開始時の回転数を入力してください');
       return;
     }
-    // 遊技開始時刻を記録
+    setShowMachineSuggestions(false);
+    setShowStoreSuggestions(false);
     setStartTime(new Date());
     setBallsUsed('');
-    // 現在の回転数の初期値として開始回転数をセット
     setEndRotation(startRotation);
     setScreen('playing');
   };
@@ -110,9 +177,6 @@ export default function App() {
     const rotationsNum = accumulatedRotations + Math.max(0, endRotationNum - startRotationNum);
     const totalBallsNum = accumulatedBalls + ballsNum;
 
-    // 125玉あたりの回転数を総合計で計算
-    const rotationRate = parseFloat(((rotationsNum / totalBallsNum) * RATE_BALLS).toFixed(1));
-
     const now = new Date();
     const newSession = {
       id: Date.now().toString(),
@@ -122,23 +186,182 @@ export default function App() {
         : '--',
       endTime: now.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }),
       machineName: machineName.trim(),
+      storeName: storeName.trim(),
       machineNumber: machineNumber.trim(),
       startRotation: startRotationNum,
       endRotation: endRotationNum,
       rotations: rotationsNum,           // 合計回転数（リセット累積込み）
       ballsUsed: totalBallsNum,          // 合計使用玉数（リセット累積込み）
-      rotationRate,                      // 125玉あたり回転数
+      // rotationRate は表示時に動的に計算するため保存しない
     };
 
     try {
       const updatedSessions = [newSession, ...sessions];
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updatedSessions));
       setSessions(updatedSessions);
+      await saveNameHistory(machineName.trim(), storeName.trim());
       resetForm();
       setScreen('home');
     } catch (error) {
       Alert.alert('エラー', 'データの保存に失敗しました');
     }
+  };
+
+  // 設定画面を開く（現在の設定値をドラフトにコピー）
+  const handleOpenSettings = () => {
+    setDraftRateBalls(String(settings.rateBalls));
+    setDraftBallButtons(settings.ballButtons.map(String));
+    setDraftRotationButtons(settings.rotationButtons.map(String));
+    setScreen('settings');
+  };
+
+  // 設定を保存する
+  const handleSaveSettings = async () => {
+    const rateBalls = parseInt(draftRateBalls, 10);
+    const ballButtons = draftBallButtons.map((v) => parseInt(v, 10));
+    const rotationButtons = draftRotationButtons.map((v) => parseInt(v, 10));
+
+    if (isNaN(rateBalls) || rateBalls <= 0) {
+      Alert.alert('入力エラー', '基準玉数を正しく入力してください');
+      return;
+    }
+    if (ballButtons.some((v) => isNaN(v) || v <= 0)) {
+      Alert.alert('入力エラー', '使用玉数ボタンの値を正しく入力してください');
+      return;
+    }
+    if (rotationButtons.some((v) => isNaN(v) || v <= 0)) {
+      Alert.alert('入力エラー', '回転数ボタンの値を正しく入力してください');
+      return;
+    }
+
+    const newSettings = { rateBalls, ballButtons, rotationButtons };
+    try {
+      await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(newSettings));
+      setSettings(newSettings);
+      setScreen('home');
+    } catch (_) {
+      Alert.alert('エラー', '設定の保存に失敗しました');
+    }
+  };
+
+  // 編集画面を開く（日付・時刻を分割してドラフトにセット）
+  const handleOpenEdit = (item) => {
+    const [year = '', month = '', day = ''] = (item.date || '').split('/');
+    const [sh = '', sm = ''] = (item.startTime || '').split(':');
+    const [eh = '', em = ''] = (item.endTime || '').split(':');
+    setEditDraft({
+      machineName: item.machineName || '',
+      storeName: item.storeName || '',
+      machineNumber: item.machineNumber || '',
+      dateYear: year,
+      dateMonth: month,
+      dateDay: day,
+      startHour: sh,
+      startMinute: sm,
+      endHour: eh,
+      endMinute: em,
+      id: item.id,
+    });
+    setScreen('edit');
+  };
+
+  // 編集内容を保存する
+  const handleSaveEdit = async () => {
+    // 日付の検証
+    const year = parseInt(editDraft.dateYear, 10);
+    const month = parseInt(editDraft.dateMonth, 10);
+    const day = parseInt(editDraft.dateDay, 10);
+    if (isNaN(year) || year < 1900 || year > 2999) {
+      Alert.alert('入力エラー', '年を正しく入力してください');
+      return;
+    }
+    if (isNaN(month) || month < 1 || month > 12) {
+      Alert.alert('入力エラー', '月を正しく入力してください');
+      return;
+    }
+    if (isNaN(day) || day < 1 || day > 31) {
+      Alert.alert('入力エラー', '日を正しく入力してください');
+      return;
+    }
+    // 時刻の検証
+    const sh = parseInt(editDraft.startHour, 10);
+    const sm = parseInt(editDraft.startMinute, 10);
+    const eh = parseInt(editDraft.endHour, 10);
+    const em = parseInt(editDraft.endMinute, 10);
+    const validTime = (h, m) => !isNaN(h) && h >= 0 && h <= 23 && !isNaN(m) && m >= 0 && m <= 59;
+    if (!validTime(sh, sm)) {
+      Alert.alert('入力エラー', '開始時刻を正しく入力してください');
+      return;
+    }
+    if (!validTime(eh, em)) {
+      Alert.alert('入力エラー', '終了時刻を正しく入力してください');
+      return;
+    }
+
+    const pad = (s) => String(s || '').padStart(2, '0');
+    const date = `${year}/${month}/${day}`;
+    const startTime = `${pad(sh)}:${pad(sm)}`;
+    const endTime = `${pad(eh)}:${pad(em)}`;
+
+    const updated = sessions.map((s) =>
+      s.id === editDraft.id
+        ? {
+            ...s,
+            machineName: editDraft.machineName.trim(),
+            storeName: editDraft.storeName.trim(),
+            machineNumber: editDraft.machineNumber.trim(),
+            date,
+            startTime,
+            endTime,
+          }
+        : s
+    );
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      setSessions(updated);
+      setScreen('home');
+    } catch (_) {
+      Alert.alert('エラー', 'データの保存に失敗しました');
+    }
+  };
+
+  // 保存済みセッションから台情報・累積データを引き継いで続行
+  const handleContinueSession = (item) => {
+    const rotation = String(item.endRotation);
+    resetForm();
+    setMachineName(item.machineName || '');
+    setStoreName(item.storeName || '');
+    setMachineNumber(item.machineNumber || '');
+    setStartRotation(rotation);
+    setEndRotation(rotation);
+    setStartTime(new Date());
+    setAccumulatedRotations(item.rotations);
+    setAccumulatedBalls(item.ballsUsed);
+    setScreen('playing');
+  };
+
+  // セッション削除
+  const handleDeleteSession = (id) => {
+    Alert.alert(
+      '記録を削除しますか？',
+      'この操作は元に戻せません',
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: '削除する',
+          style: 'destructive',
+          onPress: async () => {
+            const updated = sessions.filter((s) => s.id !== id);
+            try {
+              await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+              setSessions(updated);
+            } catch (error) {
+              Alert.alert('エラー', 'データの削除に失敗しました');
+            }
+          },
+        },
+      ]
+    );
   };
 
   // 中断（保存しないで戻る）
@@ -197,7 +420,6 @@ export default function App() {
     const segmentBalls = Math.max(0, parseInt(ballsUsed, 10) || 0);
     setAccumulatedRotations((prev) => prev + segmentRotations);
     setAccumulatedBalls((prev) => prev + segmentBalls);
-    setResetCount((prev) => prev + 1);
 
     // 新しい開始回転数で続行・使用玉数の表示は0にリセット
     setStartRotation(newResetRotation);
@@ -220,15 +442,9 @@ export default function App() {
     const totalBalls = accumulatedBalls + (parseFloat(ballsUsed) || 0);
     const totalRotations = calcTotalRotations();
     if (totalBalls > 0 && totalRotations > 0) {
-      return ((totalRotations / totalBalls) * RATE_BALLS).toFixed(1);
+      return ((totalRotations / totalBalls) * settings.rateBalls).toFixed(1);
     }
     return '--';
-  };
-
-  // 遊技中のリアルタイム回転数表示（累積込み）
-  const calcRotations = () => {
-    const total = calcTotalRotations();
-    return total > 0 ? total.toLocaleString() : '--';
   };
 
   // ========================================
@@ -238,7 +454,12 @@ export default function App() {
     return (
       <View style={styles.container}>
         <StatusBar style="dark" />
-        <Text style={styles.title}>回転カウンター</Text>
+        <View style={styles.homeHeader}>
+          <Text style={styles.title}>回転カウンター</Text>
+          <TouchableOpacity style={styles.settingsButton} onPress={handleOpenSettings}>
+            <Text style={styles.settingsButtonText}>設定</Text>
+          </TouchableOpacity>
+        </View>
 
         {sessions.length === 0 ? (
           // 記録がない場合
@@ -253,7 +474,22 @@ export default function App() {
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.listContent}
             renderItem={({ item }) => (
-              <View style={styles.sessionCard}>
+              <TouchableOpacity
+                style={styles.sessionCard}
+                activeOpacity={0.8}
+                onPress={() => {
+                  Alert.alert(
+                    item.machineName || '機種未入力',
+                    item.date,
+                    [
+                      { text: '編集する', onPress: () => handleOpenEdit(item) },
+                      { text: '続きから遊技', onPress: () => handleContinueSession(item) },
+                      { text: '削除', style: 'destructive', onPress: () => handleDeleteSession(item.id) },
+                      { text: 'キャンセル', style: 'cancel' },
+                    ]
+                  );
+                }}
+              >
                 {/* カードヘッダー：日付・時刻 */}
                 <View style={styles.cardHeader}>
                   <Text style={styles.sessionDate}>{item.date}</Text>
@@ -261,6 +497,11 @@ export default function App() {
                     {item.startTime} - {item.endTime}
                   </Text>
                 </View>
+
+                {/* 店舗名 */}
+                {item.storeName ? (
+                  <Text style={styles.sessionStore}>{item.storeName}</Text>
+                ) : null}
 
                 {/* 機種名・台番号 */}
                 <Text style={styles.sessionMachine}>
@@ -270,12 +511,6 @@ export default function App() {
 
                 {/* 統計の横並び表示 */}
                 <View style={styles.statsRow}>
-                  <View style={styles.statItem}>
-                    <Text style={styles.statLabel}>開始→終了</Text>
-                    <Text style={styles.statValue}>
-                      {item.startRotation}→{item.endRotation}
-                    </Text>
-                  </View>
                   <View style={styles.statItem}>
                     <Text style={styles.statLabel}>遊技回転</Text>
                     <Text style={styles.statValue}>
@@ -288,15 +523,17 @@ export default function App() {
                       {item.ballsUsed.toLocaleString()}
                     </Text>
                   </View>
-                  {/* 125玉回転は色付きで強調 */}
+                  {/* 玉あたり回転は色付きで強調（現在の基準玉数で動的計算） */}
                   <View style={[styles.statItem, styles.rateItem]}>
-                    <Text style={styles.statLabel}>125玉回転</Text>
+                    <Text style={styles.statLabel}>{settings.rateBalls}玉回転</Text>
                     <Text style={[styles.statValue, styles.rateValue]}>
-                      {item.rotationRate}
+                      {item.ballsUsed > 0
+                        ? ((item.rotations / item.ballsUsed) * settings.rateBalls).toFixed(1)
+                        : '--'}
                     </Text>
                   </View>
                 </View>
-              </View>
+              </TouchableOpacity>
             )}
           />
         )}
@@ -326,7 +563,7 @@ export default function App() {
           <Text style={styles.title}>台情報を入力</Text>
           <Text style={styles.subtitle}>座った台の情報を入力してください</Text>
 
-          {/* 機種名（任意） */}
+          {/* 機種名（任意）+ 履歴候補 */}
           <Text style={styles.label}>
             機種名 <Text style={styles.optional}>任意</Text>
           </Text>
@@ -334,9 +571,59 @@ export default function App() {
             style={styles.input}
             placeholder="例: 海物語、エヴァ15など"
             value={machineName}
-            onChangeText={setMachineName}
+            onChangeText={(text) => { setMachineName(text); setShowMachineSuggestions(true); }}
+            onFocus={() => setShowMachineSuggestions(true)}
+            onBlur={() => setTimeout(() => setShowMachineSuggestions(false), 200)}
             returnKeyType="next"
           />
+          {showMachineSuggestions && machineNameHistory.filter((n) =>
+            n.toLowerCase().includes(machineName.toLowerCase())
+          ).length > 0 && (
+            <View style={styles.suggestionsContainer}>
+              {machineNameHistory
+                .filter((n) => n.toLowerCase().includes(machineName.toLowerCase()))
+                .map((name, i) => (
+                  <TouchableOpacity
+                    key={i}
+                    style={styles.suggestionItem}
+                    onPress={() => { setMachineName(name); setShowMachineSuggestions(false); }}
+                  >
+                    <Text style={styles.suggestionText}>{name}</Text>
+                  </TouchableOpacity>
+                ))}
+            </View>
+          )}
+
+          {/* 店舗名（任意）+ 履歴候補 */}
+          <Text style={styles.label}>
+            店舗名 <Text style={styles.optional}>任意</Text>
+          </Text>
+          <TextInput
+            style={styles.input}
+            placeholder="例: ○○パチンコ"
+            value={storeName}
+            onChangeText={(text) => { setStoreName(text); setShowStoreSuggestions(true); }}
+            onFocus={() => setShowStoreSuggestions(true)}
+            onBlur={() => setTimeout(() => setShowStoreSuggestions(false), 200)}
+            returnKeyType="next"
+          />
+          {showStoreSuggestions && storeNameHistory.filter((n) =>
+            n.toLowerCase().includes(storeName.toLowerCase())
+          ).length > 0 && (
+            <View style={styles.suggestionsContainer}>
+              {storeNameHistory
+                .filter((n) => n.toLowerCase().includes(storeName.toLowerCase()))
+                .map((name, i) => (
+                  <TouchableOpacity
+                    key={i}
+                    style={styles.suggestionItem}
+                    onPress={() => { setStoreName(name); setShowStoreSuggestions(false); }}
+                  >
+                    <Text style={styles.suggestionText}>{name}</Text>
+                  </TouchableOpacity>
+                ))}
+            </View>
+          )}
 
           {/* 台番号（任意） */}
           <Text style={styles.label}>
@@ -381,6 +668,218 @@ export default function App() {
             }}
           >
             <Text style={styles.secondaryButtonText}>戻る</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    );
+  }
+
+  // ========================================
+  // 編集画面（edit）
+  // ========================================
+  if (screen === 'edit') {
+    return (
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <StatusBar style="dark" />
+        <ScrollView showsVerticalScrollIndicator={false}>
+          <Text style={styles.title}>記録を編集</Text>
+
+          <Text style={styles.label}>機種名</Text>
+          <TextInput style={styles.input} value={editDraft.machineName}
+            onChangeText={(v) => updateEditDraft('machineName', v)} />
+
+          <Text style={styles.label}>店舗名</Text>
+          <TextInput style={styles.input} value={editDraft.storeName}
+            onChangeText={(v) => updateEditDraft('storeName', v)} />
+
+          <Text style={styles.label}>台番号</Text>
+          <TextInput style={styles.input} value={editDraft.machineNumber}
+            onChangeText={(v) => updateEditDraft('machineNumber', v)}
+            keyboardType="numeric" />
+
+          <Text style={styles.label}>日付</Text>
+          <View style={styles.dateRow}>
+            <TextInput
+              style={[styles.dateInput, styles.dateInputYear]}
+              value={editDraft.dateYear}
+              onChangeText={(v) => updateEditDraft('dateYear', v)}
+              keyboardType="numeric"
+              maxLength={4}
+              placeholder="2026"
+            />
+            <Text style={styles.dateSeparator}>/</Text>
+            <TextInput
+              style={styles.dateInput}
+              value={editDraft.dateMonth}
+              onChangeText={(v) => updateEditDraft('dateMonth', v)}
+              keyboardType="numeric"
+              maxLength={2}
+              placeholder="月"
+            />
+            <Text style={styles.dateSeparator}>/</Text>
+            <TextInput
+              style={styles.dateInput}
+              value={editDraft.dateDay}
+              onChangeText={(v) => updateEditDraft('dateDay', v)}
+              keyboardType="numeric"
+              maxLength={2}
+              placeholder="日"
+            />
+          </View>
+
+          <View style={styles.editTimeRow}>
+            <View style={styles.editTimeItem}>
+              <Text style={styles.label}>開始時刻</Text>
+              <View style={styles.timeRow}>
+                <TextInput
+                  style={styles.timeInput}
+                  value={editDraft.startHour}
+                  onChangeText={(v) => updateEditDraft('startHour', v)}
+                  keyboardType="numeric"
+                  maxLength={2}
+                  placeholder="時"
+                />
+                <Text style={styles.timeSeparator}>:</Text>
+                <TextInput
+                  style={styles.timeInput}
+                  value={editDraft.startMinute}
+                  onChangeText={(v) => updateEditDraft('startMinute', v)}
+                  keyboardType="numeric"
+                  maxLength={2}
+                  placeholder="分"
+                />
+              </View>
+            </View>
+            <View style={styles.editTimeItem}>
+              <Text style={styles.label}>終了時刻</Text>
+              <View style={styles.timeRow}>
+                <TextInput
+                  style={styles.timeInput}
+                  value={editDraft.endHour}
+                  onChangeText={(v) => updateEditDraft('endHour', v)}
+                  keyboardType="numeric"
+                  maxLength={2}
+                  placeholder="時"
+                />
+                <Text style={styles.timeSeparator}>:</Text>
+                <TextInput
+                  style={styles.timeInput}
+                  value={editDraft.endMinute}
+                  onChangeText={(v) => updateEditDraft('endMinute', v)}
+                  keyboardType="numeric"
+                  maxLength={2}
+                  placeholder="分"
+                />
+              </View>
+            </View>
+          </View>
+
+          <TouchableOpacity style={styles.primaryButton} onPress={handleSaveEdit}>
+            <Text style={styles.primaryButtonText}>保存する</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.secondaryButton} onPress={() => setScreen('home')}>
+            <Text style={styles.secondaryButtonText}>キャンセル</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    );
+  }
+
+  // ========================================
+  // 設定画面（settings）
+  // ========================================
+  if (screen === 'settings') {
+    return (
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <StatusBar style="dark" />
+        <ScrollView showsVerticalScrollIndicator={false}>
+          <Text style={styles.title}>設定</Text>
+
+          {/* 基準玉数 */}
+          <Text style={styles.label}>回転率の基準玉数</Text>
+          <Text style={styles.hint}>例: 250（250玉あたりの回転数で計算）</Text>
+          <TextInput
+            style={styles.input}
+            value={draftRateBalls}
+            onChangeText={setDraftRateBalls}
+            keyboardType="numeric"
+            returnKeyType="done"
+          />
+
+          {/* 使用玉数ボタンの値 */}
+          <Text style={styles.label}>使用玉数ボタンの値（3つ）</Text>
+          <Text style={styles.hint}>遊技中に表示される＋ボタンの加算量</Text>
+          <View style={styles.settingsRow}>
+            {draftBallButtons.map((val, i) => (
+              <TextInput
+                key={`bb${i}`}
+                style={styles.settingsInput}
+                value={val}
+                onChangeText={(text) => {
+                  const next = [...draftBallButtons];
+                  next[i] = text;
+                  setDraftBallButtons(next);
+                }}
+                keyboardType="numeric"
+                returnKeyType="done"
+              />
+            ))}
+          </View>
+
+          {/* 回転数ボタンの値 */}
+          <Text style={styles.label}>回転数ボタンの値（3つ）</Text>
+          <Text style={styles.hint}>遊技中に表示される＋ボタンの加算量</Text>
+          <View style={styles.settingsRow}>
+            {draftRotationButtons.map((val, i) => (
+              <TextInput
+                key={`rb${i}`}
+                style={styles.settingsInput}
+                value={val}
+                onChangeText={(text) => {
+                  const next = [...draftRotationButtons];
+                  next[i] = text;
+                  setDraftRotationButtons(next);
+                }}
+                keyboardType="numeric"
+                returnKeyType="done"
+              />
+            ))}
+          </View>
+
+          <TouchableOpacity style={styles.primaryButton} onPress={handleSaveSettings}>
+            <Text style={styles.primaryButtonText}>保存する</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.resetDefaultButton}
+            onPress={() => {
+              Alert.alert(
+                'デフォルトに戻しますか？',
+                '設定がすべて初期値にリセットされます',
+                [
+                  { text: 'キャンセル', style: 'cancel' },
+                  {
+                    text: 'リセット',
+                    style: 'destructive',
+                    onPress: () => {
+                      setDraftRateBalls(String(DEFAULT_SETTINGS.rateBalls));
+                      setDraftBallButtons(DEFAULT_SETTINGS.ballButtons.map(String));
+                      setDraftRotationButtons(DEFAULT_SETTINGS.rotationButtons.map(String));
+                    },
+                  },
+                ]
+              );
+            }}
+          >
+            <Text style={styles.resetDefaultButtonText}>デフォルトに戻す</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.secondaryButton} onPress={() => setScreen('home')}>
+            <Text style={styles.secondaryButtonText}>キャンセル</Text>
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -434,15 +933,17 @@ export default function App() {
     >
       <StatusBar style="light" />
 
-      {/* ===== 上部: 台情報 + 125玉回転率 + 総計 ===== */}
+      {/* ===== 上部: 台情報 + 玉あたり回転率 + 総計 ===== */}
       <View style={styles.rateDisplay}>
+        {storeName ? (
+          <Text style={styles.playingStoreName}>{storeName}</Text>
+        ) : null}
         <Text style={styles.playingMachineName}>
           {machineName || '機種未入力'}
           {machineNumber ? `（${machineNumber}番台）` : ''}
         </Text>
-        <Text style={styles.rateLabel}>125玉あたり回転数</Text>
         <Text style={styles.rateDisplayValue}>{calcRotationRate()}</Text>
-        <Text style={styles.rateUnit}>回転 / 125玉</Text>
+        <Text style={styles.rateUnit}>回転 / {settings.rateBalls}玉</Text>
 
         {/* 総遊技回転数・総使用玉数の常時表示 */}
         <View style={styles.totalRow}>
@@ -476,7 +977,7 @@ export default function App() {
             keyboardType="numeric"
           />
           <View style={styles.btnRow}>
-            {[1, 10, 100].map((n) => (
+            {settings.rotationButtons.map((n) => (
               <TouchableOpacity
                 key={`r+${n}`}
                 style={styles.btnIncrement}
@@ -487,7 +988,7 @@ export default function App() {
             ))}
           </View>
           <View style={styles.btnRow}>
-            {[1, 10, 100].map((n) => (
+            {settings.rotationButtons.map((n) => (
               <TouchableOpacity
                 key={`r-${n}`}
                 style={styles.btnDecrement}
@@ -513,7 +1014,7 @@ export default function App() {
             keyboardType="numeric"
           />
           <View style={styles.btnRow}>
-            {[125, 250, 1000].map((n) => (
+            {settings.ballButtons.map((n) => (
               <TouchableOpacity
                 key={`b+${n}`}
                 style={styles.btnIncrement}
@@ -524,7 +1025,7 @@ export default function App() {
             ))}
           </View>
           <View style={styles.btnRow}>
-            {[125, 250, 1000].map((n) => (
+            {settings.ballButtons.map((n) => (
               <TouchableOpacity
                 key={`b-${n}`}
                 style={styles.btnDecrement}
@@ -597,6 +1098,139 @@ const styles = StyleSheet.create({
     color: '#bbb',
   },
 
+  // ホームヘッダー（タイトル + 設定ボタン）
+  homeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+    position: 'relative',
+  },
+  settingsButton: {
+    position: 'absolute',
+    right: 0,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    backgroundColor: '#fff',
+  },
+  settingsButtonText: {
+    fontSize: 13,
+    color: '#555',
+  },
+
+  // 設定画面
+  settingsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
+  },
+  settingsInput: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 14,
+    fontSize: 18,
+    fontWeight: 'bold',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    textAlign: 'center',
+  },
+
+  // 編集画面の時刻・回転数の横並び
+  editTimeRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  editTimeItem: {
+    flex: 1,
+  },
+  // 日付入力（年/月/日）
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  dateInput: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    fontSize: 18,
+    fontWeight: 'bold',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    textAlign: 'center',
+  },
+  dateInputYear: {
+    flex: 1.5,
+  },
+  dateSeparator: {
+    fontSize: 18,
+    color: '#888',
+  },
+  // 時刻入力（時:分）
+  timeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  timeInput: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    fontSize: 18,
+    fontWeight: 'bold',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    textAlign: 'center',
+  },
+  timeSeparator: {
+    fontSize: 18,
+    color: '#888',
+  },
+
+  // 入力候補リスト
+  suggestionsContainer: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 10,
+    marginTop: 2,
+    marginBottom: 4,
+    overflow: 'hidden',
+  },
+  suggestionItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  suggestionText: {
+    fontSize: 15,
+    color: '#333',
+  },
+
+  resetDefaultButton: {
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#ffcdd2',
+    backgroundColor: '#fff0f0',
+  },
+  resetDefaultButtonText: {
+    fontSize: 14,
+    color: '#e53935',
+  },
+
   // セッションカード
   listContent: {
     paddingBottom: 16,
@@ -625,6 +1259,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#aaa',
   },
+  sessionStore: {
+    fontSize: 12,
+    color: '#888',
+    marginBottom: 2,
+  },
   sessionMachine: {
     fontSize: 17,
     fontWeight: 'bold',
@@ -650,7 +1289,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#333',
   },
-  // 千玉回転だけ色を変える
+  // 玉あたり回転だけ色を変える
   rateItem: {
     backgroundColor: '#eef4ff',
     borderRadius: 8,
@@ -728,36 +1367,21 @@ const styles = StyleSheet.create({
     backgroundColor: '#f0f4f8',
   },
 
-  // 遊技中ヘッダー（上部エリア内）
-  playingHeader: {},
+  playingStoreName: {
+    fontSize: 11,
+    color: '#7a9acc',
+    marginBottom: 1,
+  },
   playingMachineName: {
     fontSize: 14,
     fontWeight: 'bold',
     color: '#aac4ff',
     marginBottom: 4,
   },
-  playingStartInfo: {},
-
-  // 入力欄ラベルと計算値の横並び
-  inputRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-    marginTop: 12,
-    marginBottom: 4,
-  },
   playingLabel: {
     fontSize: 13,
     color: '#555',
     fontWeight: 'bold',
-  },
-  calcInline: {
-    fontSize: 12,
-    color: '#888',
-  },
-  calcValue: {
-    fontWeight: 'bold',
-    color: '#3a86ff',
   },
 
   // 遊技中の入力欄
@@ -836,25 +1460,12 @@ const styles = StyleSheet.create({
     marginVertical: 10,
   },
 
-  // 逆算した回転数のテキスト表示（旧スタイル・未使用だが念のため残す）
-  calcLabel: {
-    fontSize: 13,
-    color: '#888',
-    textAlign: 'center',
-    marginTop: 8,
-  },
-
-  // 125玉回転のリアルタイム表示（上部）
+  // 遊技中画面の上部エリア
   rateDisplay: {
     backgroundColor: '#1a1a2e',
     paddingVertical: 12,
     paddingHorizontal: 20,
     alignItems: 'center',
-  },
-  rateLabel: {
-    fontSize: 12,
-    color: '#aac4ff',
-    marginBottom: 2,
   },
   rateDisplayValue: {
     fontSize: 44,
