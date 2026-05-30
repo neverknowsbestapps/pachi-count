@@ -27,9 +27,37 @@ const DEFAULT_SETTINGS = {
   rotationButtons: [1, 10, 100],
 };
 
+// 画面の識別子（タイプミス防止のため定数化）
+const SCREEN = {
+  HOME: 'home',
+  SETUP: 'setup',
+  PLAYING: 'playing',
+  RESET: 'reset',
+  SETTINGS: 'settings',
+  DETAIL: 'detail',
+  EDIT: 'edit',
+};
+
+// カラーパレット（色はすべてここで一元管理する）
+const COLORS = {
+  primary: '#0066FF',        // メインの青（ボタン・強調値）
+  primaryLight: '#EFF6FF',   // 青の薄い背景
+  primaryBorder: '#DBEAFE',  // 青の薄い枠線
+  white: '#FFFFFF',          // カード・入力欄の背景
+  background: '#F8F9FC',     // 画面全体の背景
+  border: '#E5E7EB',         // 標準の境界線
+  borderLight: '#F3F4F6',    // 薄い境界線・区切り線
+  textDark: '#111827',       // 見出し・数値の強調
+  textBody: '#374151',       // 本文テキスト
+  textGray: '#6B7280',       // ラベル
+  textMuted: '#9CA3AF',      // 補助テキスト・プレースホルダー
+  danger: '#FF3B30',         // 削除など危険な操作の赤
+  dangerBorder: '#FECACA',   // 赤系の枠線
+};
+
 export default function App() {
-  // 現在の画面: 'home' | 'setup' | 'playing' | 'reset' | 'settings' | 'detail' | 'edit'
-  const [screen, setScreen] = useState('home');
+  // 現在の画面（値は SCREEN 定数を参照）
+  const [screen, setScreen] = useState(SCREEN.HOME);
   // 保存済みセッション一覧
   const [sessions, setSessions] = useState([]);
 
@@ -157,7 +185,7 @@ export default function App() {
     setStartTime(new Date());
     setBallsUsed('');
     setEndRotation(startRotation);
-    setScreen('playing');
+    setScreen(SCREEN.PLAYING);
   };
 
   // 遊技終了・保存（playing → home）
@@ -213,7 +241,7 @@ export default function App() {
       setSessions(updatedSessions);
       await saveNameHistory(machineName.trim(), storeName.trim());
       resetForm();
-      setScreen('home');
+      setScreen(SCREEN.HOME);
     } catch (error) {
       Alert.alert('エラー', 'データの保存に失敗しました');
     }
@@ -224,7 +252,7 @@ export default function App() {
     setDraftRateBalls(String(settings.rateBalls));
     setDraftBallButtons(settings.ballButtons.map(String));
     setDraftRotationButtons(settings.rotationButtons.map(String));
-    setScreen('settings');
+    setScreen(SCREEN.SETTINGS);
   };
 
   // 設定を保存する
@@ -250,7 +278,7 @@ export default function App() {
     try {
       await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(newSettings));
       setSettings(newSettings);
-      setScreen('home');
+      setScreen(SCREEN.HOME);
     } catch (_) {
       Alert.alert('エラー', '設定の保存に失敗しました');
     }
@@ -275,7 +303,7 @@ export default function App() {
       endMinute: em,
       id: item.id,
     });
-    setScreen('edit');
+    setScreen(SCREEN.EDIT);
   };
 
   // 編集内容を保存する
@@ -348,7 +376,7 @@ export default function App() {
     try {
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
       setSessions(updated);
-      setScreen('home');
+      setScreen(SCREEN.HOME);
     } catch (_) {
       Alert.alert('エラー', 'データの保存に失敗しました');
     }
@@ -366,7 +394,7 @@ export default function App() {
     setStartTime(new Date());
     setAccumulatedRotations(item.rotations);
     setAccumulatedBalls(item.ballsUsed);
-    setScreen('playing');
+    setScreen(SCREEN.PLAYING);
   };
 
   // 共有テキストを組み立てる（メモは含めない）
@@ -416,7 +444,7 @@ export default function App() {
             try {
               await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
               setSessions(updated);
-              setScreen('home');
+              setScreen(SCREEN.HOME);
             } catch (error) {
               Alert.alert('エラー', 'データの削除に失敗しました');
             }
@@ -438,7 +466,7 @@ export default function App() {
           style: 'destructive',
           onPress: () => {
             resetForm();
-            setScreen('home');
+            setScreen(SCREEN.HOME);
           },
         },
       ]
@@ -465,7 +493,7 @@ export default function App() {
   // リセット画面を開く
   const handleOpenReset = () => {
     setNewResetRotation('');
-    setScreen('reset');
+    setScreen(SCREEN.RESET);
   };
 
   // リセット確定：現セグメントの回転数を累積して新しい開始回転数をセット
@@ -488,7 +516,7 @@ export default function App() {
     setEndRotation(newResetRotation);
     setBallsUsed('0');
     setNewResetRotation('');
-    setScreen('playing');
+    setScreen(SCREEN.PLAYING);
   };
 
   // 開始時刻〜終了時刻から所要時間を計算（"HH:MM" 文字列）
@@ -522,10 +550,34 @@ export default function App() {
     return '--';
   };
 
+  // 入力履歴の候補リストを表示する（機種名・店舗名で共通利用）
+  // visible: 表示フラグ / history: 履歴配列 / value: 現在の入力値
+  // onSelect: 候補選択時の処理 / onClose: リストを閉じる処理
+  const renderSuggestions = (visible, history, value, onSelect, onClose) => {
+    if (!visible) return null;
+    const matches = history.filter((n) =>
+      n.toLowerCase().includes(value.toLowerCase())
+    );
+    if (matches.length === 0) return null;
+    return (
+      <View style={styles.suggestionsContainer}>
+        {matches.map((name, i) => (
+          <TouchableOpacity
+            key={i}
+            style={styles.suggestionItem}
+            onPress={() => { onSelect(name); onClose(); }}
+          >
+            <Text style={styles.suggestionText}>{name}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    );
+  };
+
   // ========================================
   // ホーム画面
   // ========================================
-  if (screen === 'home') {
+  if (screen === SCREEN.HOME) {
     return (
       <View style={styles.container}>
         <StatusBar style="dark" />
@@ -556,7 +608,7 @@ export default function App() {
               <TouchableOpacity
                 style={styles.sessionCard}
                 activeOpacity={0.7}
-                onPress={() => { setDetailSession(item); setScreen('detail'); }}
+                onPress={() => { setDetailSession(item); setScreen(SCREEN.DETAIL); }}
               >
                 {/* ヒーロー：回転率を主役表示 */}
                 <View style={styles.cardHero}>
@@ -603,12 +655,7 @@ export default function App() {
         )}
 
         {/* 遊技開始ボタン */}
-        <TouchableOpacity
-          style={styles.primaryButton}
-          onPress={() => setScreen('setup')}
-        >
-          <Text style={styles.primaryButtonText}>遊技開始</Text>
-        </TouchableOpacity>
+        <AppButton label="遊技開始" onPress={() => setScreen(SCREEN.SETUP)} />
       </View>
     );
   }
@@ -616,7 +663,7 @@ export default function App() {
   // ========================================
   // 台情報入力画面（setup）
   // ========================================
-  if (screen === 'setup') {
+  if (screen === SCREEN.SETUP) {
     return (
       <KeyboardAvoidingView
         style={styles.container}
@@ -660,22 +707,9 @@ export default function App() {
             maxLength={50}
             returnKeyType="next"
           />
-          {showMachineSuggestions && machineNameHistory.filter((n) =>
-            n.toLowerCase().includes(machineName.toLowerCase())
-          ).length > 0 && (
-            <View style={styles.suggestionsContainer}>
-              {machineNameHistory
-                .filter((n) => n.toLowerCase().includes(machineName.toLowerCase()))
-                .map((name, i) => (
-                  <TouchableOpacity
-                    key={i}
-                    style={styles.suggestionItem}
-                    onPress={() => { setMachineName(name); setShowMachineSuggestions(false); }}
-                  >
-                    <Text style={styles.suggestionText}>{name}</Text>
-                  </TouchableOpacity>
-                ))}
-            </View>
+          {renderSuggestions(
+            showMachineSuggestions, machineNameHistory, machineName,
+            setMachineName, () => setShowMachineSuggestions(false)
           )}
 
           {/* 店舗名（任意）+ 履歴候補 */}
@@ -692,22 +726,9 @@ export default function App() {
             maxLength={50}
             returnKeyType="next"
           />
-          {showStoreSuggestions && storeNameHistory.filter((n) =>
-            n.toLowerCase().includes(storeName.toLowerCase())
-          ).length > 0 && (
-            <View style={styles.suggestionsContainer}>
-              {storeNameHistory
-                .filter((n) => n.toLowerCase().includes(storeName.toLowerCase()))
-                .map((name, i) => (
-                  <TouchableOpacity
-                    key={i}
-                    style={styles.suggestionItem}
-                    onPress={() => { setStoreName(name); setShowStoreSuggestions(false); }}
-                  >
-                    <Text style={styles.suggestionText}>{name}</Text>
-                  </TouchableOpacity>
-                ))}
-            </View>
+          {renderSuggestions(
+            showStoreSuggestions, storeNameHistory, storeName,
+            setStoreName, () => setShowStoreSuggestions(false)
           )}
 
           {/* 台番号（任意） */}
@@ -739,20 +760,14 @@ export default function App() {
           <Text style={styles.memoCounter}>{memo.length} / 200</Text>
 
           {/* 遊技スタートボタン */}
-          <TouchableOpacity style={styles.primaryButton} onPress={handleStartSession}>
-            <Text style={styles.primaryButtonText}>遊技開始</Text>
-          </TouchableOpacity>
+          <AppButton label="遊技開始" onPress={handleStartSession} />
 
           {/* 戻るボタン */}
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={() => {
-              resetForm();
-              setScreen('home');
-            }}
-          >
-            <Text style={styles.secondaryButtonText}>戻る</Text>
-          </TouchableOpacity>
+          <AppButton
+            label="戻る"
+            variant="secondary"
+            onPress={() => { resetForm(); setScreen(SCREEN.HOME); }}
+          />
         </ScrollView>
       </KeyboardAvoidingView>
     );
@@ -761,11 +776,11 @@ export default function App() {
   // ========================================
   // 詳細画面（detail）
   // ========================================
-  if (screen === 'detail') {
+  if (screen === SCREEN.DETAIL) {
     const item = detailSession;
     if (!item) {
       // 安全策: detailSession 未設定なら home へ
-      setScreen('home');
+      setScreen(SCREEN.HOME);
       return null;
     }
     const duration = calcDuration(item.startTime, item.endTime);
@@ -779,7 +794,7 @@ export default function App() {
 
         {/* ヘッダー */}
         <View style={styles.detailHeader}>
-          <TouchableOpacity onPress={() => setScreen('home')} style={styles.detailBackButton}>
+          <TouchableOpacity onPress={() => setScreen(SCREEN.HOME)} style={styles.detailBackButton}>
             <Text style={styles.detailBackText}>← 戻る</Text>
           </TouchableOpacity>
           <Text style={styles.detailTitle}>記録の詳細</Text>
@@ -799,36 +814,18 @@ export default function App() {
           {/* 店舗・台情報 */}
           <Text style={styles.detailSectionLabel}>店舗・台情報</Text>
           <View style={styles.detailSection}>
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>店舗名</Text>
-              <Text style={styles.detailValue}>{item.storeName || '-'}</Text>
-            </View>
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>機種名</Text>
-              <Text style={styles.detailValue}>{item.machineName || '-'}</Text>
-            </View>
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>台番号</Text>
-              <Text style={styles.detailValue}>{item.machineNumber || '-'}</Text>
-            </View>
+            <DetailRow label="店舗名" value={item.storeName || '-'} />
+            <DetailRow label="機種名" value={item.machineName || '-'} />
+            <DetailRow label="台番号" value={item.machineNumber || '-'} />
           </View>
 
           {/* 遊技データ */}
           <Text style={styles.detailSectionLabel}>遊技データ</Text>
           <View style={styles.detailSection}>
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>総回転数</Text>
-              <Text style={styles.detailValue}>{item.rotations.toLocaleString()}</Text>
-            </View>
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>総使用玉数</Text>
-              <Text style={styles.detailValue}>{item.ballsUsed.toLocaleString()}</Text>
-            </View>
+            <DetailRow label="総回転数" value={item.rotations.toLocaleString()} />
+            <DetailRow label="総使用玉数" value={item.ballsUsed.toLocaleString()} />
             <View style={styles.detailDivider} />
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>{settings.rateBalls}玉あたり回転数</Text>
-              <Text style={[styles.detailValue, styles.detailRateValue]}>{rate}</Text>
-            </View>
+            <DetailRow label={`${settings.rateBalls}玉あたり回転数`} value={rate} highlight />
           </View>
 
           {/* メモ（あれば表示） */}
@@ -842,12 +839,8 @@ export default function App() {
           ) : null}
 
           {/* アクションボタン */}
-          <TouchableOpacity style={styles.primaryButton} onPress={() => handleOpenEdit(item)}>
-            <Text style={styles.primaryButtonText}>編集する</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.primaryButton} onPress={() => handleContinueSession(item)}>
-            <Text style={styles.primaryButtonText}>続きから遊技</Text>
-          </TouchableOpacity>
+          <AppButton label="編集する" onPress={() => handleOpenEdit(item)} />
+          <AppButton label="続きから遊技" onPress={() => handleContinueSession(item)} />
           <TouchableOpacity style={styles.shareButton} onPress={() => handleShareSession(item)}>
             <Text style={styles.shareButtonText}>共有する</Text>
           </TouchableOpacity>
@@ -862,7 +855,7 @@ export default function App() {
   // ========================================
   // 編集画面（edit）
   // ========================================
-  if (screen === 'edit') {
+  if (screen === SCREEN.EDIT) {
     return (
       <KeyboardAvoidingView
         style={styles.container}
@@ -978,12 +971,8 @@ export default function App() {
             </View>
           </View>
 
-          <TouchableOpacity style={styles.primaryButton} onPress={handleSaveEdit}>
-            <Text style={styles.primaryButtonText}>保存する</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.secondaryButton} onPress={() => setScreen('home')}>
-            <Text style={styles.secondaryButtonText}>キャンセル</Text>
-          </TouchableOpacity>
+          <AppButton label="保存する" onPress={handleSaveEdit} />
+          <AppButton label="キャンセル" variant="secondary" onPress={() => setScreen(SCREEN.HOME)} />
         </ScrollView>
       </KeyboardAvoidingView>
     );
@@ -992,7 +981,7 @@ export default function App() {
   // ========================================
   // 設定画面（settings）
   // ========================================
-  if (screen === 'settings') {
+  if (screen === SCREEN.SETTINGS) {
     return (
       <KeyboardAvoidingView
         style={styles.container}
@@ -1053,9 +1042,7 @@ export default function App() {
             ))}
           </View>
 
-          <TouchableOpacity style={styles.primaryButton} onPress={handleSaveSettings}>
-            <Text style={styles.primaryButtonText}>保存する</Text>
-          </TouchableOpacity>
+          <AppButton label="保存する" onPress={handleSaveSettings} />
           <TouchableOpacity
             style={styles.resetDefaultButton}
             onPress={() => {
@@ -1079,9 +1066,7 @@ export default function App() {
           >
             <Text style={styles.resetDefaultButtonText}>デフォルトに戻す</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.secondaryButton} onPress={() => setScreen('home')}>
-            <Text style={styles.secondaryButtonText}>キャンセル</Text>
-          </TouchableOpacity>
+          <AppButton label="キャンセル" variant="secondary" onPress={() => setScreen(SCREEN.HOME)} />
         </ScrollView>
       </KeyboardAvoidingView>
     );
@@ -1090,7 +1075,7 @@ export default function App() {
   // ========================================
   // リセット入力画面（reset）
   // ========================================
-  if (screen === 'reset') {
+  if (screen === SCREEN.RESET) {
     const currentTotal = calcTotalRotations();
     return (
       <KeyboardAvoidingView
@@ -1115,12 +1100,8 @@ export default function App() {
           autoFocus
         />
 
-        <TouchableOpacity style={styles.primaryButton} onPress={handleConfirmReset}>
-          <Text style={styles.primaryButtonText}>継続する</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.secondaryButton} onPress={() => setScreen('playing')}>
-          <Text style={styles.secondaryButtonText}>キャンセル（遊技中に戻る）</Text>
-        </TouchableOpacity>
+        <AppButton label="継続する" onPress={handleConfirmReset} />
+        <AppButton label="キャンセル（遊技中に戻る）" variant="secondary" onPress={() => setScreen(SCREEN.PLAYING)} />
       </KeyboardAvoidingView>
     );
   }
@@ -1251,15 +1232,42 @@ export default function App() {
 
       {/* ===== 下部固定: 終了・中断ボタン ===== */}
       <View style={styles.playingFooter}>
-        <TouchableOpacity style={styles.primaryButton} onPress={handleEndSession}>
-          <Text style={styles.primaryButtonText}>遊技終了・保存</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.secondaryButton} onPress={handleAbort}>
-          <Text style={styles.secondaryButtonText}>中断する（保存しない）</Text>
-        </TouchableOpacity>
+        <AppButton label="遊技終了・保存" onPress={handleEndSession} />
+        <AppButton label="中断する（保存しない）" variant="secondary" onPress={handleAbort} />
       </View>
 
     </KeyboardAvoidingView>
+  );
+}
+
+// ========================================
+// 再利用コンポーネント
+// ========================================
+
+// 共通ボタン（variant で primary / secondary を切り替え）
+function AppButton({ label, onPress, variant = 'primary' }) {
+  const isPrimary = variant === 'primary';
+  return (
+    <TouchableOpacity
+      style={isPrimary ? styles.primaryButton : styles.secondaryButton}
+      onPress={onPress}
+    >
+      <Text style={isPrimary ? styles.primaryButtonText : styles.secondaryButtonText}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+// 詳細画面の1行（label と value の横並び。highlight=true で回転率を強調表示）
+function DetailRow({ label, value, highlight }) {
+  return (
+    <View style={styles.detailRow}>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <Text style={[styles.detailValue, highlight && styles.detailRateValue]}>
+        {value}
+      </Text>
+    </View>
   );
 }
 
@@ -1269,7 +1277,7 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FC',
+    backgroundColor: COLORS.background,
     paddingTop: 60,
     paddingHorizontal: 20,
   },
@@ -1277,14 +1285,14 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '700',
     textAlign: 'center',
-    color: '#111827',
+    color: COLORS.textDark,
     marginBottom: 6,
     letterSpacing: -0.3,
   },
   subtitle: {
     fontSize: 13,
     textAlign: 'center',
-    color: '#9CA3AF',
+    color: COLORS.textMuted,
     marginBottom: 24,
   },
 
@@ -1296,13 +1304,13 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 18,
-    color: '#9CA3AF',
+    color: COLORS.textMuted,
     fontWeight: '500',
     marginBottom: 8,
   },
   emptySubText: {
     fontSize: 13,
-    color: '#9CA3AF',
+    color: COLORS.textMuted,
   },
 
   // ホームヘッダー（タイトル + 設定ボタン）
@@ -1322,13 +1330,13 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: COLORS.white,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: COLORS.border,
   },
   settingsButtonText: {
     fontSize: 20,
-    color: '#6B7280',
+    color: COLORS.textGray,
     lineHeight: 24,
   },
 
@@ -1340,15 +1348,15 @@ const styles = StyleSheet.create({
   },
   settingsInput: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: COLORS.white,
     borderRadius: 12,
     padding: 14,
     fontSize: 18,
     fontWeight: '700',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: COLORS.border,
     textAlign: 'center',
-    color: '#111827',
+    color: COLORS.textDark,
   },
 
   // 詳細画面
@@ -1364,13 +1372,13 @@ const styles = StyleSheet.create({
   },
   detailBackText: {
     fontSize: 15,
-    color: '#0066FF',
+    color: COLORS.primary,
     fontWeight: '500',
   },
   detailTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#111827',
+    color: COLORS.textDark,
     letterSpacing: -0.2,
   },
   detailHeaderSpacer: {
@@ -1383,17 +1391,17 @@ const styles = StyleSheet.create({
   detailDateText: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#111827',
+    color: COLORS.textDark,
     marginBottom: 4,
     letterSpacing: -0.2,
   },
   detailTimeText: {
     fontSize: 13,
-    color: '#6B7280',
+    color: COLORS.textGray,
   },
   detailSectionLabel: {
     fontSize: 11,
-    color: '#9CA3AF',
+    color: COLORS.textMuted,
     fontWeight: '600',
     marginBottom: 8,
     marginLeft: 4,
@@ -1401,13 +1409,13 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   detailSection: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: COLORS.white,
     borderRadius: 14,
     paddingVertical: 4,
     paddingHorizontal: 16,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#F3F4F6',
+    borderColor: COLORS.borderLight,
   },
   detailRow: {
     flexDirection: 'row',
@@ -1417,22 +1425,22 @@ const styles = StyleSheet.create({
   },
   detailLabel: {
     fontSize: 13,
-    color: '#6B7280',
+    color: COLORS.textGray,
   },
   detailValue: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#111827',
+    color: COLORS.textDark,
   },
   detailRateValue: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#0066FF',
+    color: COLORS.primary,
     letterSpacing: -0.5,
   },
   detailDivider: {
     height: 1,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: COLORS.borderLight,
     marginVertical: 0,
   },
   shareButton: {
@@ -1442,13 +1450,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 8,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#FFFFFF',
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
   },
   shareButtonText: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#0066FF',
+    color: COLORS.primary,
   },
   deleteButton: {
     height: 48,
@@ -1458,34 +1466,34 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 24,
     borderWidth: 1,
-    borderColor: '#FECACA',
-    backgroundColor: '#FFFFFF',
+    borderColor: COLORS.dangerBorder,
+    backgroundColor: COLORS.white,
   },
   deleteButtonText: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#FF3B30',
+    color: COLORS.danger,
   },
   // メモ表示（詳細画面）
   detailMemoText: {
     fontSize: 14,
-    color: '#374151',
+    color: COLORS.textBody,
     paddingVertical: 12,
     lineHeight: 22,
   },
   // 開始時の回転数（setup画面最上部の強調ブロック）
   startRotationBlock: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: COLORS.white,
     borderRadius: 14,
     padding: 18,
     marginTop: 8,
     marginBottom: 12,
     borderWidth: 1.5,
-    borderColor: '#0066FF',
+    borderColor: COLORS.primary,
   },
   startRotationLabel: {
     fontSize: 14,
-    color: '#111827',
+    color: COLORS.textDark,
     fontWeight: '600',
     marginBottom: 6,
     letterSpacing: 0.2,
@@ -1493,20 +1501,20 @@ const styles = StyleSheet.create({
 
   // メモ入力欄（setup・編集画面）
   memoInput: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: COLORS.white,
     borderRadius: 12,
     padding: 14,
     fontSize: 14,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: COLORS.border,
     minHeight: 90,
     maxHeight: 140,
     lineHeight: 20,
-    color: '#111827',
+    color: COLORS.textDark,
   },
   memoCounter: {
     fontSize: 11,
-    color: '#9CA3AF',
+    color: COLORS.textMuted,
     textAlign: 'right',
     marginTop: 4,
   },
@@ -1527,23 +1535,23 @@ const styles = StyleSheet.create({
   },
   dateInput: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: COLORS.white,
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 8,
     fontSize: 18,
     fontWeight: '700',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: COLORS.border,
     textAlign: 'center',
-    color: '#111827',
+    color: COLORS.textDark,
   },
   dateInputYear: {
     flex: 1.5,
   },
   dateSeparator: {
     fontSize: 18,
-    color: '#9CA3AF',
+    color: COLORS.textMuted,
   },
   // 時刻入力（時:分）
   timeRow: {
@@ -1553,27 +1561,27 @@ const styles = StyleSheet.create({
   },
   timeInput: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: COLORS.white,
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 4,
     fontSize: 18,
     fontWeight: '700',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: COLORS.border,
     textAlign: 'center',
-    color: '#111827',
+    color: COLORS.textDark,
   },
   timeSeparator: {
     fontSize: 18,
-    color: '#9CA3AF',
+    color: COLORS.textMuted,
   },
 
   // 入力候補リスト
   suggestionsContainer: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: COLORS.white,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: COLORS.border,
     borderRadius: 12,
     marginTop: 4,
     marginBottom: 4,
@@ -1583,11 +1591,11 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    borderBottomColor: COLORS.borderLight,
   },
   suggestionText: {
     fontSize: 14,
-    color: '#374151',
+    color: COLORS.textBody,
   },
 
   resetDefaultButton: {
@@ -1597,12 +1605,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 8,
     borderWidth: 1,
-    borderColor: '#FECACA',
-    backgroundColor: '#FFFFFF',
+    borderColor: COLORS.dangerBorder,
+    backgroundColor: COLORS.white,
   },
   resetDefaultButtonText: {
     fontSize: 14,
-    color: '#FF3B30',
+    color: COLORS.danger,
     fontWeight: '500',
   },
 
@@ -1611,13 +1619,13 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   sessionCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: COLORS.white,
     borderRadius: 16,
     paddingVertical: 16,
     paddingHorizontal: 18,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#F3F4F6',
+    borderColor: COLORS.borderLight,
   },
   // カードヒーロー（回転率主役）
   cardHero: {
@@ -1635,41 +1643,41 @@ const styles = StyleSheet.create({
   cardRateValue: {
     fontSize: 34,
     fontWeight: '700',
-    color: '#0066FF',
+    color: COLORS.primary,
     lineHeight: 38,
     letterSpacing: -0.5,
   },
   cardRateLabel: {
     fontSize: 11,
-    color: '#9CA3AF',
+    color: COLORS.textMuted,
     marginTop: 2,
     letterSpacing: 0.3,
   },
   cardDate: {
     fontSize: 12,
-    color: '#6B7280',
+    color: COLORS.textGray,
     fontWeight: '500',
   },
   cardTime: {
     fontSize: 11,
-    color: '#9CA3AF',
+    color: COLORS.textMuted,
     marginTop: 2,
   },
   cardDivider: {
     height: 1,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: COLORS.borderLight,
     marginVertical: 4,
     marginBottom: 12,
   },
   cardStore: {
     fontSize: 12,
-    color: '#6B7280',
+    color: COLORS.textGray,
     marginBottom: 4,
   },
   cardMachine: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#111827',
+    color: COLORS.textDark,
     marginBottom: 10,
   },
   cardCountsRow: {
@@ -1678,62 +1686,62 @@ const styles = StyleSheet.create({
   },
   cardCount: {
     fontSize: 13,
-    color: '#374151',
+    color: COLORS.textBody,
     fontWeight: '500',
   },
 
   // フォーム共通
   label: {
     fontSize: 13,
-    color: '#374151',
+    color: COLORS.textBody,
     fontWeight: '600',
     marginTop: 18,
     marginBottom: 8,
     letterSpacing: 0.2,
   },
   required: {
-    color: '#FF3B30',
+    color: COLORS.danger,
     fontSize: 11,
     fontWeight: '500',
   },
   optional: {
-    color: '#9CA3AF',
+    color: COLORS.textMuted,
     fontSize: 11,
     fontWeight: '400',
   },
   hint: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: COLORS.textMuted,
     marginBottom: 8,
     marginTop: -2,
   },
   input: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: COLORS.white,
     borderRadius: 12,
     padding: 14,
     fontSize: 15,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    color: '#111827',
+    borderColor: COLORS.border,
+    color: COLORS.textDark,
   },
   // 遊技中画面用の大きい入力欄
   inputLarge: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: COLORS.white,
     borderRadius: 12,
     padding: 16,
     fontSize: 28,
     fontWeight: '700',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: COLORS.border,
     textAlign: 'center',
-    color: '#111827',
+    color: COLORS.textDark,
     letterSpacing: -0.5,
   },
 
   // 遊技中画面のルートコンテナ
   playingContainer: {
     flex: 1,
-    backgroundColor: '#F8F9FC',
+    backgroundColor: COLORS.background,
     paddingTop: 36,
   },
 
@@ -1756,25 +1764,25 @@ const styles = StyleSheet.create({
     paddingBottom: 18,
     paddingTop: 6,
     borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
-    backgroundColor: '#FFFFFF',
+    borderTopColor: COLORS.borderLight,
+    backgroundColor: COLORS.white,
   },
 
   playingStoreName: {
     fontSize: 11,
-    color: '#9CA3AF',
+    color: COLORS.textMuted,
     marginBottom: 1,
     letterSpacing: 0.3,
   },
   playingMachineName: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#374151',
+    color: COLORS.textBody,
     marginBottom: 4,
   },
   playingLabel: {
     fontSize: 12,
-    color: '#6B7280',
+    color: COLORS.textGray,
     fontWeight: '600',
     letterSpacing: 0.3,
     marginBottom: 4,
@@ -1782,15 +1790,15 @@ const styles = StyleSheet.create({
 
   // 遊技中の入力欄
   playingInput: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: COLORS.white,
     borderRadius: 12,
     height: 54,
     fontSize: 26,
     fontWeight: '700',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: COLORS.border,
     textAlign: 'center',
-    color: '#111827',
+    color: COLORS.textDark,
     letterSpacing: -0.5,
   },
 
@@ -1804,7 +1812,7 @@ const styles = StyleSheet.create({
   btnIncrement: {
     flex: 1,
     height: 54,
-    backgroundColor: '#0066FF',
+    backgroundColor: COLORS.primary,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1812,23 +1820,23 @@ const styles = StyleSheet.create({
   btnIncrementText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: COLORS.white,
   },
   // 減算ボタン（赤・加算の半分の高さ）
   btnDecrement: {
     flex: 1,
     height: 28,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: COLORS.white,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: COLORS.border,
   },
   btnDecrementText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#6B7280',
+    color: COLORS.textGray,
   },
 
   // リセットして続けるボタン
@@ -1838,41 +1846,41 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#DBEAFE',
-    backgroundColor: '#EFF6FF',
+    borderColor: COLORS.primaryBorder,
+    backgroundColor: COLORS.primaryLight,
   },
   resetButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#0066FF',
+    color: COLORS.primary,
   },
 
   // 区切り線
   divider: {
     height: 1,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: COLORS.borderLight,
     marginVertical: 8,
   },
 
   // 遊技中画面の上部エリア
   rateDisplay: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: COLORS.white,
     paddingVertical: 10,
     paddingHorizontal: 20,
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: COLORS.border,
   },
   rateDisplayValue: {
     fontSize: 40,
     fontWeight: '700',
-    color: '#0066FF',
+    color: COLORS.primary,
     lineHeight: 46,
     letterSpacing: -1,
   },
   rateUnit: {
     fontSize: 11,
-    color: '#9CA3AF',
+    color: COLORS.textMuted,
     marginTop: 2,
     letterSpacing: 0.3,
   },
@@ -1883,7 +1891,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
+    borderTopColor: COLORS.borderLight,
     width: '100%',
   },
   totalItem: {
@@ -1892,23 +1900,23 @@ const styles = StyleSheet.create({
   },
   totalDivider: {
     width: 1,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: COLORS.borderLight,
   },
   totalLabel: {
     fontSize: 11,
-    color: '#9CA3AF',
+    color: COLORS.textMuted,
     marginBottom: 2,
     letterSpacing: 0.3,
   },
   totalValue: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#111827',
+    color: COLORS.textDark,
   },
 
   // ボタン（ホーム・setup 画面共通）
   primaryButton: {
-    backgroundColor: '#0066FF',
+    backgroundColor: COLORS.primary,
     height: 48,
     borderRadius: 14,
     alignItems: 'center',
@@ -1916,7 +1924,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   primaryButtonText: {
-    color: '#FFFFFF',
+    color: COLORS.white,
     fontSize: 16,
     fontWeight: '600',
     letterSpacing: 0.2,
@@ -1928,7 +1936,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   secondaryButtonText: {
-    color: '#9CA3AF',
+    color: COLORS.textMuted,
     fontSize: 14,
     fontWeight: '500',
   },
