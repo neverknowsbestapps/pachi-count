@@ -454,6 +454,30 @@ export default function App() {
     );
   };
 
+  // すべての記録を削除する（設定・入力履歴は残す）
+  const handleClearSessions = () => {
+    Alert.alert(
+      'すべての記録を削除しますか？',
+      'この操作は元に戻せません。設定は保持されます。',
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: 'すべて削除',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await AsyncStorage.removeItem(STORAGE_KEY);
+              setSessions([]);
+              setScreen(SCREEN.HOME);
+            } catch (_) {
+              Alert.alert('エラー', 'データの削除に失敗しました');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   // 中断（保存しないで戻る）
   const handleAbort = () => {
     Alert.alert(
@@ -1066,6 +1090,15 @@ export default function App() {
           >
             <Text style={styles.resetDefaultButtonText}>デフォルトに戻す</Text>
           </TouchableOpacity>
+
+          {/* データ管理 */}
+          <View style={styles.dataSection}>
+            <Text style={styles.dataSectionLabel}>データ管理</Text>
+            <TouchableOpacity style={styles.clearDataButton} onPress={handleClearSessions}>
+              <Text style={styles.clearDataButtonText}>すべての記録を削除</Text>
+            </TouchableOpacity>
+          </View>
+
           <AppButton label="キャンセル" variant="secondary" onPress={() => setScreen(SCREEN.HOME)} />
         </ScrollView>
       </KeyboardAvoidingView>
@@ -1612,6 +1645,35 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.danger,
     fontWeight: '500',
+  },
+
+  // データ管理セクション（設定画面）
+  dataSection: {
+    marginTop: 28,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+  },
+  dataSectionLabel: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    fontWeight: '600',
+    marginBottom: 10,
+    letterSpacing: 0.5,
+  },
+  clearDataButton: {
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.dangerBorder,
+    backgroundColor: COLORS.white,
+  },
+  clearDataButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.danger,
   },
 
   // セッションカード
