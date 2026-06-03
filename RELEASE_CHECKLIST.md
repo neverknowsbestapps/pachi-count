@@ -84,7 +84,7 @@ Google Play（Android）公開を主軸にしたチェックリストです。
 
 ## フェーズ6：アカウント・ビルド・署名
 
-- [ ] 🔴 Google Play Console アカウント作成（**初回登録料 $25 / 買い切り**）
+- [x] 🔴 Google Play Console アカウント作成（**初回登録料 $25 / 買い切り**）
 - [ ] 🟡 普段使いと分ける「アプリ開発用 Google アカウント」を検討
 - [ ] 🔴 EAS Build のセットアップ（`npx eas-cli` / `eas.json`）
 - [ ] 🔴 署名鍵（keystore）の管理（EAS に任せる or 自前管理。**紛失するとアプリ更新不可**）
@@ -121,5 +121,5 @@ Google Play（Android）公開を主軸にしたチェックリストです。
 1. ~~`app.json` に `android.package` / `versionCode` を追加~~ → ✅ 設定済み
 2. ~~`convert-icon.html` で PNG を2枚生成して `assets/` に配置~~ → ✅ 配置済み
 3. ~~`PRIVACY_POLICY.md` のメール記入 → GitHub Pages で公開~~ → ✅ 完了（https://neverknowsbestapps.github.io/pachicount-privacy/）
-4. Google Play Console アカウント登録（$25）
+4. ~~Google Play Console アカウント登録（$25）~~ → ✅ 完了
 5. スクリーンショット撮影・説明文作成
