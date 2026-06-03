@@ -51,7 +51,7 @@ Google Play（Android）公開を主軸にしたチェックリストです。
 ## フェーズ3：法務・ポリシー
 
 - [x] 🔴 `PRIVACY_POLICY.md` の連絡先メールアドレス（10章のプレースホルダ）を記入
-- [x] 🔴 プライバシーポリシーを公開URLで閲覧可能にする → https://mnymnx.github.io/pachicount-privacy/
+- [x] 🔴 プライバシーポリシーを公開URLで閲覧可能にする → https://neverknowsbestapps.github.io/pachicount-privacy/
 - [ ] 🔴 Google Play「データセーフティ」フォームに回答（収集なし＝シンプル）
 - [ ] 🔴 コンテンツのレーティング（年齢区分）アンケートに回答
 - [ ] 🟡 広告を入れる場合はポリシーを書き換え（広告SDKが識別子を取得するため）
@@ -120,6 +120,6 @@ Google Play（Android）公開を主軸にしたチェックリストです。
 
 1. ~~`app.json` に `android.package` / `versionCode` を追加~~ → ✅ 設定済み
 2. ~~`convert-icon.html` で PNG を2枚生成して `assets/` に配置~~ → ✅ 配置済み
-3. ~~`PRIVACY_POLICY.md` のメール記入 → GitHub Pages で公開~~ → ✅ 完了（https://mnymnx.github.io/pachicount-privacy/）
+3. ~~`PRIVACY_POLICY.md` のメール記入 → GitHub Pages で公開~~ → ✅ 完了（https://neverknowsbestapps.github.io/pachicount-privacy/）
 4. Google Play Console アカウント登録（$25）
 5. スクリーンショット撮影・説明文作成
