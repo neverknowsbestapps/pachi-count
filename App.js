@@ -184,7 +184,7 @@ export default function App() {
     setShowStoreSuggestions(false);
     setStartTime(new Date());
     setBallsUsed('');
-    setEndRotation(startRotation);
+    setEndRotation(''); // 空欄スタート（プレースホルダーに開始回転数を表示）
     setScreen(SCREEN.PLAYING);
   };
 
@@ -390,7 +390,7 @@ export default function App() {
     setStoreName(item.storeName || '');
     setMachineNumber(item.machineNumber || '');
     setStartRotation(rotation);
-    setEndRotation(rotation);
+    setEndRotation(''); // 空欄スタート（プレースホルダーに引き継ぎ回転数を表示）
     setStartTime(new Date());
     setAccumulatedRotations(item.rotations);
     setAccumulatedBalls(item.ballsUsed);
@@ -527,17 +527,20 @@ export default function App() {
       return;
     }
     // ここまでのセグメントの回転数・玉数を累積に加算
-    const segmentRotations = Math.max(
-      0,
-      parseInt(endRotation, 10) - parseInt(startRotation, 10)
-    );
+    // endRotation が空欄（parseInt が NaN）でも累積を壊さないよう isNaN で判定する
+    const parsedEnd = parseInt(endRotation, 10);
+    const parsedStart = parseInt(startRotation, 10);
+    const segmentRotations =
+      !isNaN(parsedEnd) && !isNaN(parsedStart)
+        ? Math.max(0, parsedEnd - parsedStart)
+        : 0;
     const segmentBalls = Math.max(0, parseInt(ballsUsed, 10) || 0);
     setAccumulatedRotations((prev) => prev + segmentRotations);
     setAccumulatedBalls((prev) => prev + segmentBalls);
 
-    // 新しい開始回転数で続行・使用玉数の表示は0にリセット
+    // 新しい開始回転数で続行・現在の回転数は空欄・使用玉数の表示は0にリセット
     setStartRotation(newResetRotation);
-    setEndRotation(newResetRotation);
+    setEndRotation(''); // 空欄スタート（プレースホルダーにリセット後の回転数を表示）
     setBallsUsed('0');
     setNewResetRotation('');
     setScreen(SCREEN.PLAYING);
@@ -708,7 +711,6 @@ export default function App() {
             </Text>
             <TextInput
               style={styles.inputLarge}
-              placeholder="例: 350"
               value={startRotation}
               onChangeText={setStartRotation}
               keyboardType="numeric"
@@ -723,7 +725,6 @@ export default function App() {
           </Text>
           <TextInput
             style={styles.input}
-            placeholder="例: 海物語、エヴァ15など"
             value={machineName}
             onChangeText={(text) => { setMachineName(text); setShowMachineSuggestions(true); }}
             onFocus={() => setShowMachineSuggestions(true)}
@@ -742,7 +743,6 @@ export default function App() {
           </Text>
           <TextInput
             style={styles.input}
-            placeholder="例: パーラー○○店"
             value={storeName}
             onChangeText={(text) => { setStoreName(text); setShowStoreSuggestions(true); }}
             onFocus={() => setShowStoreSuggestions(true)}
@@ -761,7 +761,6 @@ export default function App() {
           </Text>
           <TextInput
             style={styles.input}
-            placeholder="例: 123"
             value={machineNumber}
             onChangeText={setMachineNumber}
             keyboardType="numeric"
@@ -1125,7 +1124,6 @@ export default function App() {
         <Text style={styles.hint}>大当たり後などに台に表示されている回転数を入力してください</Text>
         <TextInput
           style={[styles.input, { fontSize: 22, textAlign: 'center', height: 56 }]}
-          placeholder="例: 0"
           value={newResetRotation}
           onChangeText={setNewResetRotation}
           keyboardType="numeric"
@@ -1192,6 +1190,7 @@ export default function App() {
             onChangeText={setEndRotation}
             keyboardType="numeric"
             maxLength={7}
+            selectTextOnFocus={true}
           />
           <View style={styles.btnRow}>
             {settings.rotationButtons.map((n) => (
