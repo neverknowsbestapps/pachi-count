@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>パチカウント ストア画像生成</title>
+<style>
+  body { font-family: sans-serif; max-width: 1100px; margin: 30px auto; padding: 0 16px; color:#222; }
+  .card { border:1px solid #ddd; border-radius:12px; padding:20px; margin:20px 0; }
+  canvas { border:1px solid #ccc; border-radius:8px; max-width:100%; height:auto; }
+  button { margin-top:12px; padding:10px 18px; font-size:14px; border:0; border-radius:8px;
+           background:#0066FF; color:#fff; cursor:pointer; }
+  .note { font-size:13px; color:#666; }
+  h1 { font-size:20px; } h2 { font-size:16px; }
+</style>
+</head>
+<body>
+<h1>パチカウント ストア用画像の生成</h1>
+<p class="note">各ボタンでPNGをダウンロードし、そのまま Play Console にアップロードしてください。<br>
+※ブラウザのフォントで描画するので、Windowsで開くと日本語がきれいに出ます。</p>
+
+<div class="card">
+  <h2>1. アプリアイコン（512×512）</h2>
+  <canvas id="icon" width="512" height="512" style="width:180px;height:180px;"></canvas><br>
+  <button onclick="dl('icon','icon-512.png')">icon-512.png をダウンロード</button>
+</div>
+
+<div class="card">
+  <h2>2. フィーチャーグラフィック（1024×500）</h2>
+  <canvas id="feature" width="1024" height="500" style="width:512px;height:250px;"></canvas><br>
+  <button onclick="dl('feature','feature-graphic.png')">feature-graphic.png をダウンロード</button>
+</div>
+
+<script>
+// === 1. アイコン: アイコンSVGを512pxで描画 ===
+var iconSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">'
+  + '<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">'
+  + '<stop offset="0" stop-color="#4CC9F0"/><stop offset="1" stop-color="#0066FF"/></linearGradient></defs>'
+  + '<rect width="1024" height="1024" rx="200" fill="#12203A"/>'
+  + '<text x="512" y="512" font-family="Verdana, Geneva, sans-serif" font-weight="bold" font-size="680"'
+  + ' fill="url(#g)" text-anchor="middle" dominant-baseline="central">P</text></svg>';
+
+(function(){
+  var c = document.getElementById('icon'), ctx = c.getContext('2d');
+  var img = new Image();
+  img.onload = function(){ ctx.clearRect(0,0,512,512); ctx.drawImage(img,0,0,512,512); };
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(iconSvg);
+})();
+
+// === 2. フィーチャーグラフィック: canvasで直接描画 ===
+(function(){
+  var c = document.getElementById('feature'), ctx = c.getContext('2d');
+  // 背景（濃紺）
+  ctx.fillStyle = '#12203A';
+  ctx.fillRect(0,0,1024,500);
+  // ロゴ背後のグロー
+  var glow = ctx.createRadialGradient(250,250,40, 250,250,380);
+  glow.addColorStop(0,'rgba(76,201,240,0.20)');
+  glow.addColorStop(1,'rgba(18,32,58,0)');
+  ctx.fillStyle = glow; ctx.fillRect(0,0,1024,500);
+  // P（縦グラデーション）
+  var grad = ctx.createLinearGradient(0,80,0,420);
+  grad.addColorStop(0,'#4CC9F0'); grad.addColorStop(1,'#0066FF');
+  ctx.fillStyle = grad;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = 'bold 360px Verdana, Geneva, sans-serif';
+  ctx.fillText('P', 240, 256);
+  // アプリ名
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = 'bold 66px "Yu Gothic","Meiryo",sans-serif';
+  ctx.fillText('パチカウント', 440, 218);
+  // タグライン
+  ctx.fillStyle = '#A9BCD6';
+  ctx.font = '30px "Yu Gothic","Meiryo",sans-serif';
+  ctx.fillText('パチンコ回転数・回転率を自動計算', 442, 286);
+})();
+
+function dl(id, filename){
+  var link = document.createElement('a');
+  link.download = filename;
+  link.href = document.getElementById(id).toDataURL('image/png');
+  link.click();
+}
+</script>
+</body>
+</html>
