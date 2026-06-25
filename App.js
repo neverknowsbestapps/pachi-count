@@ -681,8 +681,10 @@ export default function App() {
           />
         )}
 
-        {/* 遊技開始ボタン */}
-        <AppButton label="遊技開始" onPress={() => setScreen(SCREEN.SETUP)} />
+        {/* 遊技開始ボタン（端末下部の操作バーと重ならないよう余白を確保） */}
+        <View style={styles.homeFooter}>
+          <AppButton label="遊技開始" onPress={() => setScreen(SCREEN.SETUP)} />
+        </View>
       </View>
     );
   }
@@ -1343,6 +1345,11 @@ const styles = StyleSheet.create({
   emptySubText: {
     fontSize: 13,
     color: COLORS.textMuted,
+  },
+
+  // ホーム: 遊技開始ボタンの下部余白（ジェスチャーバー/ホームインジケーター回避）
+  homeFooter: {
+    paddingBottom: Platform.OS === 'ios' ? 34 : 24,
   },
 
   // ホームヘッダー（タイトル + 設定ボタン）
