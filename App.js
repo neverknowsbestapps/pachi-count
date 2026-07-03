@@ -6,14 +6,62 @@ import {
   TouchableOpacity,
   TextInput,
   FlatList,
-  Alert,
+  Alert as RNAlert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Share,
+  Share as RNShare,
 } from 'react-native';
 import { useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// --- Web 対応シム ---
+// react-native-web には Alert / Share が無いため、Web では
+// ブラウザ標準の window.alert / window.confirm / Web Share API に差し替える。
+// ネイティブ（iOS/Android）ではこれまで通り React Native の実装を使う。
+const IS_WEB = Platform.OS === 'web';
+
+// Alert.alert(title, message, buttons?) の Web 実装
+function webAlert(title, message, buttons) {
+  const text = [title, message].filter(Boolean).join('\n\n');
+  // ボタンが無い/1つ＝お知らせ → window.alert
+  if (!buttons || buttons.length <= 1) {
+    window.alert(text);
+    const only = buttons && buttons[0];
+    if (only && only.onPress) only.onPress();
+    return;
+  }
+  // 「キャンセル＋実行」＝確認 → window.confirm
+  const cancelBtn = buttons.find((b) => b.style === 'cancel');
+  const confirmBtn = buttons.find((b) => b.style !== 'cancel') || buttons[buttons.length - 1];
+  if (window.confirm(text)) {
+    if (confirmBtn && confirmBtn.onPress) confirmBtn.onPress();
+  } else if (cancelBtn && cancelBtn.onPress) {
+    cancelBtn.onPress();
+  }
+}
+
+// Share.share({ message }) の Web 実装（Web Share API → 非対応時はクリップボード）
+async function webShare({ message }) {
+  try {
+    if (navigator.share) {
+      await navigator.share({ text: message });
+      return;
+    }
+  } catch (e) {
+    if (e && e.name === 'AbortError') return; // ユーザーがキャンセルしただけ
+    // それ以外はクリップボードへフォールバック
+  }
+  try {
+    await navigator.clipboard.writeText(message);
+    window.alert('共有内容をクリップボードにコピーしました');
+  } catch (_) {
+    window.alert(message);
+  }
+}
+
+const Alert = IS_WEB ? { alert: webAlert } : RNAlert;
+const Share = IS_WEB ? { share: webShare } : RNShare;
 
 // ローカルストレージのキー
 const STORAGE_KEY = '@rotation_sessions_v3';
