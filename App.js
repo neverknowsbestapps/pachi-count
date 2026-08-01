@@ -15,6 +15,8 @@ import {
 import { useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { initAds, AdBanner } from './ads';
+
 // --- Web 対応シム ---
 // react-native-web には Alert / Share が無いため、Web では
 // ブラウザ標準の window.alert / window.confirm / Web Share API に差し替える。
@@ -151,6 +153,8 @@ export default function App() {
     loadSessions();
     loadSettings();
     loadNames();
+    // 広告の下準備。使えない環境（Expo Go / ブラウザ）では何も起きない
+    initAds();
   }, []);
 
   // AsyncStorageから設定を読み込む
@@ -728,6 +732,13 @@ export default function App() {
             )}
           />
         )}
+
+        {/* バナー広告（記録一覧の下・遊技開始ボタンの上） */}
+        <AdBanner
+          borderColor={COLORS.border}
+          backgroundColor={COLORS.background}
+          textColor={COLORS.textGray}
+        />
 
         {/* 遊技開始ボタン（端末下部の操作バーと重ならないよう余白を確保） */}
         <View style={styles.homeFooter}>

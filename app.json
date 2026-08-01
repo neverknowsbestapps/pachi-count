@@ -12,6 +12,9 @@
     "android": {
       "package": "com.neverknowsbestapps.pachicount",
       "versionCode": 1,
+      "permissions": [
+        "com.google.android.gms.permission.AD_ID"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon-foreground.png",
         "backgroundColor": "#12203A"
@@ -20,6 +23,15 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "plugins": [
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-5570948445738089~2165746874",
+          "iosAppId": "ca-app-pub-3940256099942544~1458002511"
+        }
+      ]
+    ],
     "extra": {
       "eas": {
         "projectId": "4b51a267-0181-44f4-b72f-a76d925320eb"
