@@ -7,7 +7,12 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "bundleIdentifier": "com.neverknowsbestapps.pachicount",
+      "supportsTablet": false,
+      "icon": "./assets/icon-ios.png",
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.neverknowsbestapps.pachicount",
@@ -28,7 +33,7 @@
         "react-native-google-mobile-ads",
         {
           "androidAppId": "ca-app-pub-5570948445738089~2165746874",
-          "iosAppId": "ca-app-pub-3940256099942544~1458002511"
+          "iosAppId": "ca-app-pub-5570948445738089~5313033823"
         }
       ]
     ],

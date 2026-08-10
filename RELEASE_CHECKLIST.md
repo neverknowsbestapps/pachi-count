@@ -4,9 +4,11 @@
 このファイルは「これから**アップデートを出す**ときの手順書」です。
 （初回公開までの作業は末尾の「完了済み」節に畳んであります）
 
+**App Store（iOS）の初回公開は `RELEASE_CHECKLIST_IOS.md` を参照。**
+
 優先度： 🔴必須（これがないと公開・審査が通らない） / 🟡推奨（やった方がよい） / ⚪任意
 
-最終更新: 2026-07-31
+最終更新: 2026-08-10
 
 ---
 
@@ -14,7 +16,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| ストア | Google Play で公開中（Android のみ） |
+| ストア | Google Play で公開中（Android のみ）／App Store は準備中（`RELEASE_CHECKLIST_IOS.md`） |
 | パッケージ名 | `com.neverknowsbestapps.pachicount` ※**変更不可** |
 | 公開中のバージョン | `version: 1.0.0` / `versionCode: 1` |
 | 次に出すバージョン | `version: 1.1.0`（app.json 変更済み。`versionCode` は EAS が自動採番） |
@@ -150,7 +152,7 @@ Play Console →「ポリシーとプログラム」→「アプリのコンテ�
 ### app.json の設定
 - [x] 🔴 `android.package` を設定（`com.neverknowsbestapps.pachicount`）※**公開済みのため変更不可**
 - [x] 🔴 `version` と `android.versionCode` を設定
-- [ ] ⚪ iOS も出すなら `ios.bundleIdentifier` を設定（未対応）
+- [x] ⚪ iOS 用の設定（`ios.bundleIdentifier` ほか）→ 2026-08-10 に追加。詳細は `RELEASE_CHECKLIST_IOS.md`
 
 ### アイコン・画像アセット
 - [x] 🔴 `convert-icon.html` で **icon.png** を生成 → `assets/` に配置

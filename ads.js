@@ -1,4 +1,4 @@
-// 広告（AdMob）— いまはテスト広告だけ。
+// 広告（AdMob）— Android は本番の広告、iOS はまだ未設定。
 //
 // App.js に直接書かずファイルを分けているのは、環境ごとに「読み込まない」を
 // 作る必要があるため。
@@ -31,8 +31,10 @@ try {
 export const USE_TEST_ADS = false;
 
 // 本番のバナー広告ユニットID（AdMob で作ったもの）。
-// iOS は出していないので空のまま。
-const UNIT_IDS = { android: 'ca-app-pub-5570948445738089/1322458553', ios: '' };
+const UNIT_IDS = {
+  android: 'ca-app-pub-5570948445738089/1322458553',
+  ios: 'ca-app-pub-5570948445738089/8892920250',
+};
 
 function bannerUnitId() {
   if (!ads) return null;
