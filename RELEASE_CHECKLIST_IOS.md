@@ -3,7 +3,7 @@
 Apple App Store 公開用のチェックリストです。Google Play 側は `RELEASE_CHECKLIST.md` を参照。
 優先度： 🔴必須（これがないと公開不可） / 🟡推奨（やった方がよい） / ⚪任意
 
-最終更新: 2026-08-10
+最終更新: 2026-08-15
 
 ---
 
@@ -15,6 +15,7 @@ Apple App Store 公開用のチェックリストです。Google Play 側は `RE
 | Apple Team ID | `4PV3BQ6A2N` |
 | Apple ID（ascAppId） | `6799788161` |
 | SKU | `pachicount` |
+| App Store URL | https://apps.apple.com/jp/app/id6799788161 |
 | AdMob iOS アプリID | `ca-app-pub-5570948445738089~5313033823` |
 | AdMob iOS バナー広告ユニットID | `ca-app-pub-5570948445738089/8892920250` |
 
@@ -32,6 +33,7 @@ Apple App Store 公開用のチェックリストです。Google Play 側は `RE
 ## フェーズ1：app.json の設定 ✅ 完了
 
 - [x] 🔴 `ios.bundleIdentifier` = `com.neverknowsbestapps.pachicount` ※公開後は変更不可
+- [x] 🟡 `ios.appStoreUrl` = `https://apps.apple.com/jp/app/id6799788161`
 - [x] 🔴 `ios.buildNumber` は **app.json に書かない**。`eas.json` が
       `appVersionSource: "remote"` なので EAS 側で自動採番される（初回は 1 で初期化済み）
 - [x] 🔴 `ios.config.usesNonExemptEncryption` = `false`
@@ -48,7 +50,10 @@ Apple App Store 公開用のチェックリストです。Google Play 側は `RE
 - [x] 🔴 バナー広告ユニット「ホーム下部バナー」を作成し、`ads.js` の `UNIT_IDS.ios` に反映
 - [ ] 🔴 App Store 公開後、AdMob の「ストアを追加」で本番アプリと紐付ける
       （紐付けるまで承認状況は「要審査」で、広告配信が制限される）
-- [ ] 🟡 AdMob の「お支払いに関する問題（AdSense お支払いアカウントをご確認ください）」の警告を解消する
+      2026-08-15 時点では、AdMob のストア検索と App Store 公開URLのどちらにも
+      まだ反映されていないため、公開反映後に再実行する。
+- [x] 🟡 AdMob のお支払いアカウントを確認
+      （AdSense 日本のアカウントは作成済み。本人確認は収益が基準額に達した時点で案内される）
 
 ---
 
@@ -175,6 +180,16 @@ npx eas-cli submit --platform ios --latest
 - [x] 🔴 **2026-08-10、審査に提出した**（ステータス「審査待ち」）。
       審査は最大48時間ほど。結果はメールで届く。
       開発者名は個人アカウントのため本名「Manamu Hattori」が公開される（ユーザー了承済み）。
+
+### 審査承認後
+
+- [x] 🔴 **2026-08-15、App Store の審査承認メールを受信**
+- [x] 🔴 App Store Connect でバージョン 1.1.0 が「配信準備完了」になっていることを確認
+- [x] 🔴 リリース方法が「このバージョンを自動でリリースする」になっていることを確認
+- [ ] 🔴 App Store の公開ページに反映されたことを確認
+      （2026-08-15 の確認時点では公開URLがまだエラーになり、AdMobからも検索できない）
+- [ ] 🔴 公開ページ反映後、AdMob のiOSアプリへストア情報を追加
+- [ ] 🟡 AdMob の承認状況が「要審査」から変わることを数日後に確認
 
 ### 私が代わりにできること（声をかけてください）
 
