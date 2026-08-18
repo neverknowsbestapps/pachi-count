@@ -1208,126 +1208,135 @@ export default function App() {
     >
       <StatusBar style="light" />
 
-      {/* ===== 上部: 台情報 + 玉あたり回転率 + 総計 ===== */}
-      <View style={styles.rateDisplay}>
-        {storeName ? (
-          <Text style={styles.playingStoreName}>{storeName}</Text>
-        ) : null}
-        <Text style={styles.playingMachineName}>
-          {machineName || '機種未入力'}
-          {machineNumber ? `（${machineNumber}番台）` : ''}
-        </Text>
-        <Text style={styles.rateDisplayValue}>{calcRotationRate()}</Text>
-        <Text style={styles.rateUnit}>回転 / {settings.rateBalls}玉</Text>
+      <ScrollView
+        style={styles.playingScroll}
+        contentContainerStyle={styles.playingScrollContent}
+        contentInsetAdjustmentBehavior="automatic"
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ===== 上部: 台情報 + 玉あたり回転率 + 総計 ===== */}
+        <View style={styles.rateDisplay}>
+          {storeName ? (
+            <Text style={styles.playingStoreName}>{storeName}</Text>
+          ) : null}
+          <Text style={styles.playingMachineName}>
+            {machineName || '機種未入力'}
+            {machineNumber ? `（${machineNumber}番台）` : ''}
+          </Text>
+          <Text style={styles.rateDisplayValue}>{calcRotationRate()}</Text>
+          <Text style={styles.rateUnit}>回転 / {settings.rateBalls}玉</Text>
 
-        {/* 総遊技回転数・総使用玉数の常時表示 */}
-        <View style={styles.totalRow}>
-          <View style={styles.totalItem}>
-            <Text style={styles.totalLabel}>総回転数</Text>
-            <Text style={styles.totalValue}>
-              {calcTotalRotations().toLocaleString()}
-            </Text>
-          </View>
-          <View style={styles.totalDivider} />
-          <View style={styles.totalItem}>
-            <Text style={styles.totalLabel}>総使用玉数</Text>
-            <Text style={styles.totalValue}>
-              {(accumulatedBalls + (parseInt(ballsUsed, 10) || 0)).toLocaleString()}
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      {/* ===== 入力エリア（回転数 + 使用玉数） ===== */}
-      <View style={styles.playingContent}>
-
-        {/* 回転数セクション */}
-        <View>
-          <Text style={styles.playingLabel}>現在の回転数</Text>
-          <TextInput
-            style={styles.playingInput}
-            placeholder={startRotation || '0'}
-            value={endRotation}
-            onChangeText={setEndRotation}
-            keyboardType="numeric"
-            maxLength={7}
-            selectTextOnFocus={true}
-          />
-          <View style={styles.btnRow}>
-            {settings.rotationButtons.map((n) => (
-              <TouchableOpacity
-                key={`r+${n}`}
-                style={styles.btnIncrement}
-                onPress={() => addToEndRotation(n)}
-              >
-                <Text style={styles.btnIncrementText}>+{n}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          <View style={styles.btnRow}>
-            {settings.rotationButtons.map((n) => (
-              <TouchableOpacity
-                key={`r-${n}`}
-                style={styles.btnDecrement}
-                onPress={() => addToEndRotation(-n)}
-              >
-                <Text style={styles.btnDecrementText}>-{n}</Text>
-              </TouchableOpacity>
-            ))}
+          {/* 総遊技回転数・総使用玉数の常時表示 */}
+          <View style={styles.totalRow}>
+            <View style={styles.totalItem}>
+              <Text style={styles.totalLabel}>総回転数</Text>
+              <Text style={styles.totalValue}>
+                {calcTotalRotations().toLocaleString()}
+              </Text>
+            </View>
+            <View style={styles.totalDivider} />
+            <View style={styles.totalItem}>
+              <Text style={styles.totalLabel}>総使用玉数</Text>
+              <Text style={styles.totalValue}>
+                {(accumulatedBalls + (parseInt(ballsUsed, 10) || 0)).toLocaleString()}
+              </Text>
+            </View>
           </View>
         </View>
 
-        {/* 区切り線 */}
-        <View style={styles.divider} />
+        {/* ===== 入力エリア（回転数 + 使用玉数） ===== */}
+        <View style={styles.playingContent}>
 
-        {/* 使用玉数セクション */}
-        <View>
-          <Text style={styles.playingLabel}>使用玉数</Text>
-          <TextInput
-            style={styles.playingInput}
-            placeholder="0"
-            value={ballsUsed}
-            onChangeText={setBallsUsed}
-            keyboardType="numeric"
-            maxLength={7}
-          />
-          <View style={styles.btnRow}>
-            {settings.ballButtons.map((n) => (
-              <TouchableOpacity
-                key={`b+${n}`}
-                style={styles.btnIncrement}
-                onPress={() => addToBallsUsed(n)}
-              >
-                <Text style={styles.btnIncrementText}>+{n}</Text>
-              </TouchableOpacity>
-            ))}
+          {/* 回転数セクション */}
+          <View>
+            <Text style={styles.playingLabel}>現在の回転数</Text>
+            <TextInput
+              style={styles.playingInput}
+              placeholder={startRotation || '0'}
+              value={endRotation}
+              onChangeText={setEndRotation}
+              keyboardType="numeric"
+              maxLength={7}
+              selectTextOnFocus={true}
+            />
+            <View style={styles.btnRow}>
+              {settings.rotationButtons.map((n) => (
+                <TouchableOpacity
+                  key={`r+${n}`}
+                  style={styles.btnIncrement}
+                  onPress={() => addToEndRotation(n)}
+                >
+                  <Text style={styles.btnIncrementText}>+{n}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={styles.btnRow}>
+              {settings.rotationButtons.map((n) => (
+                <TouchableOpacity
+                  key={`r-${n}`}
+                  style={styles.btnDecrement}
+                  onPress={() => addToEndRotation(-n)}
+                >
+                  <Text style={styles.btnDecrementText}>-{n}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
-          <View style={styles.btnRow}>
-            {settings.ballButtons.map((n) => (
-              <TouchableOpacity
-                key={`b-${n}`}
-                style={styles.btnDecrement}
-                onPress={() => addToBallsUsed(-n)}
-              >
-                <Text style={styles.btnDecrementText}>-{n}</Text>
-              </TouchableOpacity>
-            ))}
+
+          {/* 区切り線 */}
+          <View style={styles.divider} />
+
+          {/* 使用玉数セクション */}
+          <View>
+            <Text style={styles.playingLabel}>使用玉数</Text>
+            <TextInput
+              style={styles.playingInput}
+              placeholder="0"
+              value={ballsUsed}
+              onChangeText={setBallsUsed}
+              keyboardType="numeric"
+              maxLength={7}
+            />
+            <View style={styles.btnRow}>
+              {settings.ballButtons.map((n) => (
+                <TouchableOpacity
+                  key={`b+${n}`}
+                  style={styles.btnIncrement}
+                  onPress={() => addToBallsUsed(n)}
+                >
+                  <Text style={styles.btnIncrementText}>+{n}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={styles.btnRow}>
+              {settings.ballButtons.map((n) => (
+                <TouchableOpacity
+                  key={`b-${n}`}
+                  style={styles.btnDecrement}
+                  onPress={() => addToBallsUsed(-n)}
+                >
+                  <Text style={styles.btnDecrementText}>-{n}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
         </View>
-      </View>
 
-      {/* ===== リセットして続けるボタン（独立配置・常時表示） ===== */}
-      <View style={styles.resetButtonRow}>
-        <TouchableOpacity style={styles.resetButton} onPress={handleOpenReset}>
-          <Text style={styles.resetButtonText}>リセットして続ける</Text>
-        </TouchableOpacity>
-      </View>
+        {/* ===== リセットして続けるボタン（独立配置・常時表示） ===== */}
+        <View style={styles.resetButtonRow}>
+          <TouchableOpacity style={styles.resetButton} onPress={handleOpenReset}>
+            <Text style={styles.resetButtonText}>リセットして続ける</Text>
+          </TouchableOpacity>
+        </View>
 
-      {/* ===== 下部固定: 終了・中断ボタン ===== */}
-      <View style={styles.playingFooter}>
-        <AppButton label="遊技終了・保存" onPress={handleEndSession} />
-        <AppButton label="中断する（保存しない）" variant="secondary" onPress={handleAbort} />
-      </View>
+        {/* ===== 下部固定: 終了・中断ボタン ===== */}
+        <View style={styles.playingFooter}>
+          <AppButton label="遊技終了・保存" onPress={handleEndSession} />
+          <AppButton label="中断する（保存しない）" variant="secondary" onPress={handleAbort} />
+        </View>
+      </ScrollView>
 
     </KeyboardAvoidingView>
   );
@@ -1870,6 +1879,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
     paddingTop: 36,
+  },
+
+  playingScroll: {
+    flex: 1,
+  },
+  playingScrollContent: {
+    flexGrow: 1,
   },
 
   // 遊技中画面の入力エリア全体

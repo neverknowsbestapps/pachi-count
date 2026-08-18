@@ -8,6 +8,7 @@
     "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "com.neverknowsbestapps.pachicount",
+      "appStoreUrl": "https://apps.apple.com/jp/app/id6799788161",
       "supportsTablet": false,
       "icon": "./assets/icon-ios.png",
       "config": {
