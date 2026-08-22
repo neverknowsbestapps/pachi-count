@@ -2,8 +2,10 @@
 
 「パチカウント」（以下「本アプリ」といいます）は、ユーザーのプライバシーを尊重し、以下のとおりプライバシーポリシーを定めます。
 
-> このファイルは公開ページ（https://neverknowsbestapps.github.io/pachicount-privacy/ ）と
-> 同じ内容です。片方だけ直すと食い違うので、変更するときは両方そろえてください。
+> 公開元は `neverknowsbestapps.github.io` リポジトリの
+> `pachicount-privacy/index.html` です。このファイルは公開ページ
+> （https://neverknowsbestapps.github.io/pachicount-privacy/ ）と同じ内容です。
+> 片方だけ直すと食い違うので、変更するときは両方そろえてください。
 
 ## 1. 基本方針
 

@@ -8,7 +8,7 @@
 
 優先度： 🔴必須（これがないと公開・審査が通らない） / 🟡推奨（やった方がよい） / ⚪任意
 
-最終更新: 2026-08-16
+最終更新: 2026-08-22
 
 ---
 
@@ -20,7 +20,7 @@
 | パッケージ名 | `com.neverknowsbestapps.pachicount` ※**変更不可** |
 | 公開中のバージョン | `versionCode: 8` / バージョン名 `1.0.0`（2026-08-01 公開）。**すでに広告入りのビルド**。<br>広告を足したあとも `app.json` の `version` を上げずにビルドしたため、バージョン名が 1.0.0 のまま |
 | 次に出すバージョン | `version: 1.1.0`（app.json 変更済み。`versionCode` は EAS が自動採番） |
-| プライバシーポリシー | https://neverknowsbestapps.github.io/pachicount-privacy/ （別リポジトリ `pachicount-privacy` の `index.html`）※**広告対応に改訂して公開済み（2026-07-31）** |
+| プライバシーポリシー | https://neverknowsbestapps.github.io/pachicount-privacy/ （`neverknowsbestapps.github.io` リポジトリの `pachicount-privacy/index.html`）※**広告対応に改訂して公開済み（2026-07-31）** |
 | 広告 | Android・iOSとも本番ID設定済み。AndroidはAdMobで準備完了、iOSはApp Store連携待ち |
 
 > ⚠️ 広告を入れたので、次のアップデートは**コードを直すだけでは出せません**。
@@ -52,7 +52,7 @@ Android・iOSとも Google の本番用IDを設定済みです。
 
 旧ポリシーには「広告配信のための情報収集を行いません」「インターネットを通じた情報の送受信は行いません」と書いてあり、広告を入れると事実と食い違うため、**全面改訂しました（2026-07-31）**。
 
-- [x] 🔴 `pachicount-privacy/index.html` を改訂（広告配信あり／広告SDKが広告ID等を取得する旨）
+- [x] 🔴 `neverknowsbestapps.github.io/pachicount-privacy/index.html` を改訂（広告配信あり／広告SDKが広告ID等を取得する旨）
 - [x] 🔴 同じ内容で本リポジトリの `PRIVACY_POLICY.md` も更新（2ファイルの内容は一致）
 - [x] 🔴 「4. 広告について」を新設：Google AdMob の利用／取得される情報（広告ID・IPアドレス・端末情報・広告の表示履歴）／記録した遊技データは送信されないこと
 - [x] 🔴 パーソナライズ広告の無効化方法（端末の広告IDリセット、[Google 広告設定](https://myadcenter.google.com/)）を記載
@@ -61,6 +61,7 @@ Android・iOSとも Google の本番用IDを設定済みです。
 - [x] 🟡 「第三者への提供」「通信について」も広告ありの形に整合
 - [x] 🟡 「最終改定日: 2026年7月31日」を追記
 - [x] 🔴 `pachicount-privacy` を commit & push（`de97156`／2026-07-31）
+- [x] 🟡 公開元を `neverknowsbestapps.github.io/pachicount-privacy/index.html` に統合（2026-08-22）
 - [ ] 🟡 GitHub Pages に反映されたか**ブラウザで実際に開いて確認**（反映まで数分かかる）
 - [ ] 🔴 公開したポリシーの内容とデータセーフティの申告項目を**突き合わせて一致させる**（ポリシーに書いた項目 ＝ 申告する項目）
 
