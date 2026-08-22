@@ -14,6 +14,9 @@ import {
 } from 'react-native';
 import { useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFonts } from 'expo-font';
+import { Inter_600SemiBold } from '@expo-google-fonts/inter/600SemiBold';
+import { Inter_700Bold } from '@expo-google-fonts/inter/700Bold';
 
 import { initAds, AdBanner } from './ads';
 
@@ -105,7 +108,42 @@ const COLORS = {
   dangerBorder: '#FECACA',   // 赤系の枠線
 };
 
+// 画面全体で使う見た目の基準値
+const SPACING = {
+  xxs: 4,
+  xs: 8,
+  sm: 12,
+  md: 16,
+  lg: 20,
+  xl: 24,
+};
+
+const TYPE_SIZE = {
+  caption: 12,
+  label: 14,
+  body: 16,
+  metric: 18,
+  title: 20,
+  emphasis: 24,
+  input: 28,
+  cardRate: 34,
+  liveRate: 40,
+};
+
+const RADIUS = {
+  control: 12,
+  surface: 16,
+};
+
+// 押したときの反応をすべての操作で統一する
+const BUTTON_ACTIVE_OPACITY = 0.7;
+
 export default function App() {
+  const [fontsLoaded] = useFonts({
+    Inter_600SemiBold,
+    Inter_700Bold,
+  });
+
   // 現在の画面（値は SCREEN 定数を参照）
   const [screen, setScreen] = useState(SCREEN.HOME);
   // 保存済みセッション一覧
@@ -452,21 +490,21 @@ export default function App() {
   // 共有テキストを組み立てる（メモは含めない）
   const buildShareText = (item) => {
     const lines = ['【遊技記録】'];
-    if (item.date) lines.push(`📅 ${item.date}`);
-    if (item.storeName) lines.push(`🏪 ${item.storeName}`);
+    if (item.date) lines.push(`日付: ${item.date}`);
+    if (item.storeName) lines.push(`店舗: ${item.storeName}`);
     const machine = `${item.machineName || ''}${item.machineNumber ? `（${item.machineNumber}番台）` : ''}`;
-    if (machine) lines.push(`🎰 ${machine}`);
+    if (machine) lines.push(`機種: ${machine}`);
     if (item.startTime && item.endTime && item.startTime !== '--') {
       const dur = calcDuration(item.startTime, item.endTime);
-      lines.push(`⏱ ${item.startTime} - ${item.endTime}${dur ? `（${dur}）` : ''}`);
+      lines.push(`時間: ${item.startTime} - ${item.endTime}${dur ? `（${dur}）` : ''}`);
     }
     lines.push('');
-    lines.push(`🔄 総回転数: ${item.rotations.toLocaleString()}`);
-    lines.push(`⚪ 総使用玉数: ${item.ballsUsed.toLocaleString()}`);
+    lines.push(`総回転数: ${item.rotations.toLocaleString()}`);
+    lines.push(`総使用玉数: ${item.ballsUsed.toLocaleString()}`);
     const rate = item.ballsUsed > 0
       ? ((item.rotations / item.ballsUsed) * settings.rateBalls).toFixed(1)
       : '--';
-    lines.push(`✨ ${settings.rateBalls}玉あたり回転数: ${rate}`);
+    lines.push(`${settings.rateBalls}玉あたり回転数: ${rate}`);
     lines.push('');
     lines.push('#パチカウント');
     return lines.join('\n');
@@ -644,6 +682,7 @@ export default function App() {
           <TouchableOpacity
             key={i}
             style={styles.suggestionItem}
+            activeOpacity={BUTTON_ACTIVE_OPACITY}
             onPress={() => { onSelect(name); onClose(); }}
           >
             <Text style={styles.suggestionText}>{name}</Text>
@@ -656,26 +695,22 @@ export default function App() {
   // ========================================
   // ホーム画面
   // ========================================
+  if (!fontsLoaded) return null;
+
   if (screen === SCREEN.HOME) {
     return (
       <View style={styles.container}>
         <StatusBar style="dark" />
-        <View style={styles.homeHeader}>
-          <Text style={styles.title}>パチカウント</Text>
-          <TouchableOpacity
-            style={styles.settingsButton}
-            onPress={handleOpenSettings}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.settingsButtonText}>⚙</Text>
-          </TouchableOpacity>
-        </View>
+        <ScreenHeader
+          title="パチカウント"
+          rightLabel="設定"
+          onRightPress={handleOpenSettings}
+        />
 
         {sessions.length === 0 ? (
           // 記録がない場合
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>記録がありません</Text>
-            <Text style={styles.emptySubText}>「遊技開始」から記録を始めてください</Text>
           </View>
         ) : (
           // 記録一覧
@@ -686,7 +721,7 @@ export default function App() {
             renderItem={({ item }) => (
               <TouchableOpacity
                 style={styles.sessionCard}
-                activeOpacity={0.7}
+                activeOpacity={BUTTON_ACTIVE_OPACITY}
                 onPress={() => { setDetailSession(item); setScreen(SCREEN.DETAIL); }}
               >
                 {/* ヒーロー：回転率を主役表示 */}
@@ -700,9 +735,7 @@ export default function App() {
                     <Text style={styles.cardRateLabel}>{settings.rateBalls}玉あたり</Text>
                   </View>
                   <View style={styles.cardHeroRight}>
-                    <Text style={styles.cardDate}>
-                      {item.date}{item.memo ? '  📝' : ''}
-                    </Text>
+                    <Text style={styles.cardDate}>{item.date}</Text>
                     <Text style={styles.cardTime}>{item.startTime} – {item.endTime}</Text>
                   </View>
                 </View>
@@ -712,20 +745,20 @@ export default function App() {
 
                 {/* 台情報 */}
                 {item.storeName ? (
-                  <Text style={styles.cardStore}>🏪  {item.storeName}</Text>
+                  <Text style={styles.cardStore}>{item.storeName}</Text>
                 ) : null}
                 <Text style={styles.cardMachine}>
-                  🎰  {item.machineName || '機種未入力'}
+                  {item.machineName || '機種未入力'}
                   {item.machineNumber ? `（${item.machineNumber}番台）` : ''}
                 </Text>
 
                 {/* 集計値 */}
                 <View style={styles.cardCountsRow}>
                   <Text style={styles.cardCount}>
-                    🔄  {item.rotations.toLocaleString()} 回転
+                    <Text style={styles.numberMedium}>{item.rotations.toLocaleString()}</Text> 回転
                   </Text>
                   <Text style={styles.cardCount}>
-                    ⚪  {item.ballsUsed.toLocaleString()} 玉
+                    <Text style={styles.numberMedium}>{item.ballsUsed.toLocaleString()}</Text> 玉
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -758,17 +791,16 @@ export default function App() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <StatusBar style="dark" />
+        <ScreenHeader
+          title="台情報を入力"
+          leftLabel="戻る"
+          onLeftPress={() => { resetForm(); setScreen(SCREEN.HOME); }}
+        />
         <ScrollView showsVerticalScrollIndicator={false}>
-          <Text style={styles.title}>台情報を入力</Text>
-          <Text style={styles.subtitle}>現在の台の情報を入力してください</Text>
-
           {/* 開始時の回転数（必須・最上部で目立たせる） */}
           <View style={styles.startRotationBlock}>
             <Text style={styles.startRotationLabel}>
               開始時の回転数 <Text style={styles.required}>必須</Text>
-            </Text>
-            <Text style={styles.hint}>
-              現在の回転数表示をそのまま入力してください
             </Text>
             <TextInput
               style={styles.inputLarge}
@@ -781,9 +813,7 @@ export default function App() {
           </View>
 
           {/* 機種名（任意）+ 履歴候補 */}
-          <Text style={styles.label}>
-            機種名 <Text style={styles.optional}>任意</Text>
-          </Text>
+          <Text style={styles.label}>機種名</Text>
           <TextInput
             style={styles.input}
             value={machineName}
@@ -799,9 +829,7 @@ export default function App() {
           )}
 
           {/* 店舗名（任意）+ 履歴候補 */}
-          <Text style={styles.label}>
-            店舗名 <Text style={styles.optional}>任意</Text>
-          </Text>
+          <Text style={styles.label}>店舗名</Text>
           <TextInput
             style={styles.input}
             value={storeName}
@@ -817,11 +845,9 @@ export default function App() {
           )}
 
           {/* 台番号（任意） */}
-          <Text style={styles.label}>
-            台番号 <Text style={styles.optional}>任意</Text>
-          </Text>
+          <Text style={styles.label}>台番号</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, styles.numberMedium]}
             value={machineNumber}
             onChangeText={setMachineNumber}
             keyboardType="numeric"
@@ -830,9 +856,7 @@ export default function App() {
           />
 
           {/* メモ（任意・200文字以内） */}
-          <Text style={styles.label}>
-            メモ <Text style={styles.optional}>任意・200文字以内</Text>
-          </Text>
+          <Text style={styles.label}>メモ</Text>
           <TextInput
             style={styles.memoInput}
             value={memo}
@@ -845,13 +869,6 @@ export default function App() {
 
           {/* 遊技スタートボタン */}
           <AppButton label="遊技開始" onPress={handleStartSession} />
-
-          {/* 戻るボタン */}
-          <AppButton
-            label="戻る"
-            variant="secondary"
-            onPress={() => { resetForm(); setScreen(SCREEN.HOME); }}
-          />
         </ScrollView>
       </KeyboardAvoidingView>
     );
@@ -875,15 +892,11 @@ export default function App() {
     return (
       <View style={styles.container}>
         <StatusBar style="dark" />
-
-        {/* ヘッダー */}
-        <View style={styles.detailHeader}>
-          <TouchableOpacity onPress={() => setScreen(SCREEN.HOME)} style={styles.detailBackButton}>
-            <Text style={styles.detailBackText}>← 戻る</Text>
-          </TouchableOpacity>
-          <Text style={styles.detailTitle}>記録の詳細</Text>
-          <View style={styles.detailHeaderSpacer} />
-        </View>
+        <ScreenHeader
+          title="記録の詳細"
+          leftLabel="戻る"
+          onLeftPress={() => setScreen(SCREEN.HOME)}
+        />
 
         <ScrollView showsVerticalScrollIndicator={false}>
           {/* 日時 */}
@@ -900,16 +913,16 @@ export default function App() {
           <View style={styles.detailSection}>
             <DetailRow label="店舗名" value={item.storeName || '-'} />
             <DetailRow label="機種名" value={item.machineName || '-'} />
-            <DetailRow label="台番号" value={item.machineNumber || '-'} />
+            <DetailRow label="台番号" value={item.machineNumber || '-'} numeric />
           </View>
 
           {/* 遊技データ */}
           <Text style={styles.detailSectionLabel}>遊技データ</Text>
           <View style={styles.detailSection}>
-            <DetailRow label="総回転数" value={item.rotations.toLocaleString()} />
-            <DetailRow label="総使用玉数" value={item.ballsUsed.toLocaleString()} />
+            <DetailRow label="総回転数" value={item.rotations.toLocaleString()} numeric />
+            <DetailRow label="総使用玉数" value={item.ballsUsed.toLocaleString()} numeric />
             <View style={styles.detailDivider} />
-            <DetailRow label={`${settings.rateBalls}玉あたり回転数`} value={rate} highlight />
+            <DetailRow label={`${settings.rateBalls}玉あたり回転数`} value={rate} highlight numeric />
           </View>
 
           {/* メモ（あれば表示） */}
@@ -923,12 +936,20 @@ export default function App() {
           ) : null}
 
           {/* アクションボタン */}
-          <AppButton label="編集する" onPress={() => handleOpenEdit(item)} />
+          <AppButton label="編集する" variant="outline" onPress={() => handleOpenEdit(item)} />
           <AppButton label="続きから遊技" onPress={() => handleContinueSession(item)} />
-          <TouchableOpacity style={styles.shareButton} onPress={() => handleShareSession(item)}>
+          <TouchableOpacity
+            style={styles.shareButton}
+            activeOpacity={BUTTON_ACTIVE_OPACITY}
+            onPress={() => handleShareSession(item)}
+          >
             <Text style={styles.shareButtonText}>共有する</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeleteSession(item.id)}>
+          <TouchableOpacity
+            style={styles.deleteButton}
+            activeOpacity={BUTTON_ACTIVE_OPACITY}
+            onPress={() => handleDeleteSession(item.id)}
+          >
             <Text style={styles.deleteButtonText}>削除する</Text>
           </TouchableOpacity>
         </ScrollView>
@@ -946,9 +967,12 @@ export default function App() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <StatusBar style="dark" />
+        <ScreenHeader
+          title="記録を編集"
+          leftLabel="戻る"
+          onLeftPress={() => setScreen(SCREEN.HOME)}
+        />
         <ScrollView showsVerticalScrollIndicator={false}>
-          <Text style={styles.title}>記録を編集</Text>
-
           <Text style={styles.label}>機種名</Text>
           <TextInput style={styles.input} value={editDraft.machineName}
             onChangeText={(v) => updateEditDraft('machineName', v)}
@@ -960,14 +984,12 @@ export default function App() {
             maxLength={50} />
 
           <Text style={styles.label}>台番号</Text>
-          <TextInput style={styles.input} value={editDraft.machineNumber}
+          <TextInput style={[styles.input, styles.numberMedium]} value={editDraft.machineNumber}
             onChangeText={(v) => updateEditDraft('machineNumber', v)}
             keyboardType="numeric"
             maxLength={5} />
 
-          <Text style={styles.label}>
-            メモ <Text style={styles.optional}>200文字以内</Text>
-          </Text>
+          <Text style={styles.label}>メモ</Text>
           <TextInput
             style={styles.memoInput}
             value={editDraft.memo || ''}
@@ -1056,7 +1078,6 @@ export default function App() {
           </View>
 
           <AppButton label="保存する" onPress={handleSaveEdit} />
-          <AppButton label="キャンセル" variant="secondary" onPress={() => setScreen(SCREEN.HOME)} />
         </ScrollView>
       </KeyboardAvoidingView>
     );
@@ -1072,14 +1093,17 @@ export default function App() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <StatusBar style="dark" />
+        <ScreenHeader
+          title="設定"
+          leftLabel="戻る"
+          onLeftPress={() => setScreen(SCREEN.HOME)}
+        />
         <ScrollView showsVerticalScrollIndicator={false}>
-          <Text style={styles.title}>設定</Text>
-
           {/* 基準玉数 */}
           <Text style={styles.label}>回転率の基準玉数</Text>
           <Text style={styles.hint}>例: 250（指定した玉数あたりの回転数で計算）</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, styles.numberMedium]}
             value={draftRateBalls}
             onChangeText={setDraftRateBalls}
             keyboardType="numeric"
@@ -1087,8 +1111,7 @@ export default function App() {
           />
 
           {/* 使用玉数ボタンの値 */}
-          <Text style={styles.label}>使用玉数ボタンの値（3つ）</Text>
-          <Text style={styles.hint}>遊技中に表示される±ボタンの増減量</Text>
+          <Text style={styles.label}>使用玉数ボタン</Text>
           <View style={styles.settingsRow}>
             {draftBallButtons.map((val, i) => (
               <TextInput
@@ -1107,8 +1130,7 @@ export default function App() {
           </View>
 
           {/* 回転数ボタンの値 */}
-          <Text style={styles.label}>回転数ボタンの値（3つ）</Text>
-          <Text style={styles.hint}>遊技中に表示される±ボタンの増減量</Text>
+          <Text style={styles.label}>回転数ボタン</Text>
           <View style={styles.settingsRow}>
             {draftRotationButtons.map((val, i) => (
               <TextInput
@@ -1129,6 +1151,7 @@ export default function App() {
           <AppButton label="保存する" onPress={handleSaveSettings} />
           <TouchableOpacity
             style={styles.resetDefaultButton}
+            activeOpacity={BUTTON_ACTIVE_OPACITY}
             onPress={() => {
               Alert.alert(
                 'デフォルトに戻しますか？',
@@ -1137,7 +1160,6 @@ export default function App() {
                   { text: 'キャンセル', style: 'cancel' },
                   {
                     text: 'リセット',
-                    style: 'destructive',
                     onPress: () => {
                       setDraftRateBalls(String(DEFAULT_SETTINGS.rateBalls));
                       setDraftBallButtons(DEFAULT_SETTINGS.ballButtons.map(String));
@@ -1154,12 +1176,15 @@ export default function App() {
           {/* データ管理 */}
           <View style={styles.dataSection}>
             <Text style={styles.dataSectionLabel}>データ管理</Text>
-            <TouchableOpacity style={styles.clearDataButton} onPress={handleClearSessions}>
+            <TouchableOpacity
+              style={styles.clearDataButton}
+              activeOpacity={BUTTON_ACTIVE_OPACITY}
+              onPress={handleClearSessions}
+            >
               <Text style={styles.clearDataButtonText}>すべての記録を削除</Text>
             </TouchableOpacity>
           </View>
 
-          <AppButton label="キャンセル" variant="secondary" onPress={() => setScreen(SCREEN.HOME)} />
         </ScrollView>
       </KeyboardAvoidingView>
     );
@@ -1176,15 +1201,18 @@ export default function App() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <StatusBar style="dark" />
-        <Text style={styles.title}>回転数リセット</Text>
+        <ScreenHeader
+          title="回転数リセット"
+          leftLabel="戻る"
+          onLeftPress={() => setScreen(SCREEN.PLAYING)}
+        />
         <Text style={styles.subtitle}>
-          ここまでの遊技回転数: {currentTotal.toLocaleString()} 回転
+          ここまでの遊技回転数: <Text style={styles.numberMedium}>{currentTotal.toLocaleString()}</Text> 回転
         </Text>
 
-        <Text style={styles.label}>リセット後の回転数（台の表示）</Text>
-        <Text style={styles.hint}>大当たり後などに台に表示されている回転数を入力してください</Text>
+        <Text style={styles.label}>リセット後の回転数</Text>
         <TextInput
-          style={[styles.input, { fontSize: 22, textAlign: 'center', height: 56 }]}
+          style={[styles.input, styles.numberBold, { fontSize: TYPE_SIZE.emphasis, textAlign: 'center', height: 56 }]}
           value={newResetRotation}
           onChangeText={setNewResetRotation}
           keyboardType="numeric"
@@ -1193,7 +1221,6 @@ export default function App() {
         />
 
         <AppButton label="継続する" onPress={handleConfirmReset} />
-        <AppButton label="キャンセル（遊技中に戻る）" variant="secondary" onPress={() => setScreen(SCREEN.PLAYING)} />
       </KeyboardAvoidingView>
     );
   }
@@ -1206,7 +1233,7 @@ export default function App() {
       style={styles.playingContainer}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
 
       <ScrollView
         style={styles.playingScroll}
@@ -1266,6 +1293,7 @@ export default function App() {
                 <TouchableOpacity
                   key={`r+${n}`}
                   style={styles.btnIncrement}
+                  activeOpacity={BUTTON_ACTIVE_OPACITY}
                   onPress={() => addToEndRotation(n)}
                 >
                   <Text style={styles.btnIncrementText}>+{n}</Text>
@@ -1277,6 +1305,7 @@ export default function App() {
                 <TouchableOpacity
                   key={`r-${n}`}
                   style={styles.btnDecrement}
+                  activeOpacity={BUTTON_ACTIVE_OPACITY}
                   onPress={() => addToEndRotation(-n)}
                 >
                   <Text style={styles.btnDecrementText}>-{n}</Text>
@@ -1304,6 +1333,7 @@ export default function App() {
                 <TouchableOpacity
                   key={`b+${n}`}
                   style={styles.btnIncrement}
+                  activeOpacity={BUTTON_ACTIVE_OPACITY}
                   onPress={() => addToBallsUsed(n)}
                 >
                   <Text style={styles.btnIncrementText}>+{n}</Text>
@@ -1315,6 +1345,7 @@ export default function App() {
                 <TouchableOpacity
                   key={`b-${n}`}
                   style={styles.btnDecrement}
+                  activeOpacity={BUTTON_ACTIVE_OPACITY}
                   onPress={() => addToBallsUsed(-n)}
                 >
                   <Text style={styles.btnDecrementText}>-{n}</Text>
@@ -1326,7 +1357,11 @@ export default function App() {
 
         {/* ===== リセットして続けるボタン（独立配置・常時表示） ===== */}
         <View style={styles.resetButtonRow}>
-          <TouchableOpacity style={styles.resetButton} onPress={handleOpenReset}>
+          <TouchableOpacity
+            style={styles.resetButton}
+            activeOpacity={BUTTON_ACTIVE_OPACITY}
+            onPress={handleOpenReset}
+          >
             <Text style={styles.resetButtonText}>リセットして続ける</Text>
           </TouchableOpacity>
         </View>
@@ -1334,7 +1369,7 @@ export default function App() {
         {/* ===== 下部固定: 終了・中断ボタン ===== */}
         <View style={styles.playingFooter}>
           <AppButton label="遊技終了・保存" onPress={handleEndSession} />
-          <AppButton label="中断する（保存しない）" variant="secondary" onPress={handleAbort} />
+          <AppButton label="中断する" variant="secondary" onPress={handleAbort} />
         </View>
       </ScrollView>
 
@@ -1346,27 +1381,72 @@ export default function App() {
 // 再利用コンポーネント
 // ========================================
 
-// 共通ボタン（variant で primary / secondary を切り替え）
+// 画面共通ヘッダー
+function ScreenHeader({ title, leftLabel, onLeftPress, rightLabel, onRightPress }) {
+  return (
+    <View style={styles.screenHeader}>
+      <View style={styles.headerSide}>
+        {leftLabel ? (
+          <TouchableOpacity
+            style={styles.headerAction}
+            activeOpacity={BUTTON_ACTIVE_OPACITY}
+            onPress={onLeftPress}
+            accessibilityRole="button"
+          >
+            <Text style={styles.headerActionText}>{leftLabel}</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+      <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
+      <View style={[styles.headerSide, styles.headerSideRight]}>
+        {rightLabel ? (
+          <TouchableOpacity
+            style={styles.headerAction}
+            activeOpacity={BUTTON_ACTIVE_OPACITY}
+            onPress={onRightPress}
+            accessibilityRole="button"
+          >
+            <Text style={styles.headerActionText}>{rightLabel}</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+// 共通ボタン（variant で primary / outline / secondary を切り替え）
 function AppButton({ label, onPress, variant = 'primary' }) {
-  const isPrimary = variant === 'primary';
+  const buttonStyle = variant === 'primary'
+    ? styles.primaryButton
+    : variant === 'outline'
+      ? styles.outlineButton
+      : styles.secondaryButton;
+  const textStyle = variant === 'primary'
+    ? styles.primaryButtonText
+    : variant === 'outline'
+      ? styles.outlineButtonText
+      : styles.secondaryButtonText;
   return (
     <TouchableOpacity
-      style={isPrimary ? styles.primaryButton : styles.secondaryButton}
+      style={buttonStyle}
+      activeOpacity={BUTTON_ACTIVE_OPACITY}
       onPress={onPress}
     >
-      <Text style={isPrimary ? styles.primaryButtonText : styles.secondaryButtonText}>
-        {label}
-      </Text>
+      <Text style={textStyle}>{label}</Text>
     </TouchableOpacity>
   );
 }
 
 // 詳細画面の1行（label と value の横並び。highlight=true で回転率を強調表示）
-function DetailRow({ label, value, highlight }) {
+function DetailRow({ label, value, highlight, numeric = false }) {
   return (
     <View style={styles.detailRow}>
       <Text style={styles.detailLabel}>{label}</Text>
-      <Text style={[styles.detailValue, highlight && styles.detailRateValue]}>
+      <Text style={[
+        styles.detailValue,
+        numeric && styles.numberMedium,
+        highlight && styles.detailRateValue,
+      ]}>
         {value}
       </Text>
     </View>
@@ -1377,25 +1457,25 @@ function DetailRow({ label, value, highlight }) {
 // スタイル定義
 // ========================================
 const styles = StyleSheet.create({
+  numberMedium: {
+    fontFamily: 'Inter_600SemiBold',
+    fontVariant: ['tabular-nums'],
+  },
+  numberBold: {
+    fontFamily: 'Inter_700Bold',
+    fontVariant: ['tabular-nums'],
+  },
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
     paddingTop: 60,
-    paddingHorizontal: 20,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
-    textAlign: 'center',
-    color: COLORS.textDark,
-    marginBottom: 6,
-    letterSpacing: -0.3,
+    paddingHorizontal: SPACING.md,
   },
   subtitle: {
-    fontSize: 13,
+    fontSize: TYPE_SIZE.label,
     textAlign: 'center',
     color: COLORS.textMuted,
-    marginBottom: 24,
+    marginBottom: SPACING.xl,
   },
 
   // ホーム: 記録なしの表示
@@ -1405,61 +1485,63 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   emptyText: {
-    fontSize: 18,
-    color: COLORS.textMuted,
-    fontWeight: '500',
-    marginBottom: 8,
-  },
-  emptySubText: {
-    fontSize: 13,
+    fontSize: TYPE_SIZE.metric,
     color: COLORS.textMuted,
   },
-
   // ホーム: 遊技開始ボタンの下部余白（ジェスチャーバー/ホームインジケーター回避）
   homeFooter: {
     paddingBottom: Platform.OS === 'ios' ? 34 : 24,
   },
 
-  // ホームヘッダー（タイトル + 設定ボタン）
-  homeHeader: {
+  // 画面共通ヘッダー
+  screenHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
+    marginBottom: SPACING.sm,
     minHeight: 44,
-    position: 'relative',
   },
-  settingsButton: {
-    position: 'absolute',
-    right: 0,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
+  headerSide: {
+    width: 72,
+    minHeight: 44,
     justifyContent: 'center',
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
   },
-  settingsButtonText: {
-    fontSize: 20,
-    color: COLORS.textGray,
-    lineHeight: 24,
+  headerSideRight: {
+    alignItems: 'flex-end',
+  },
+  headerAction: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.xxs,
+  },
+  headerActionText: {
+    fontSize: TYPE_SIZE.body,
+    fontWeight: '600',
+    color: COLORS.primary,
+  },
+  headerTitle: {
+    flex: 1,
+    fontSize: TYPE_SIZE.title,
+    fontWeight: '600',
+    textAlign: 'center',
+    color: COLORS.textDark,
+    letterSpacing: -0.2,
   },
 
   // 設定画面
   settingsRow: {
     flexDirection: 'row',
-    gap: 10,
-    marginTop: 4,
+    gap: SPACING.sm,
+    marginTop: SPACING.xxs,
   },
   settingsInput: {
     flex: 1,
+    minWidth: 0,
     backgroundColor: COLORS.white,
-    borderRadius: 12,
-    padding: 14,
-    fontSize: 18,
-    fontWeight: '700',
+    borderRadius: RADIUS.control,
+    padding: SPACING.md,
+    fontSize: TYPE_SIZE.metric,
+    fontFamily: 'Inter_700Bold',
+    fontVariant: ['tabular-nums'],
     borderWidth: 1,
     borderColor: COLORS.border,
     textAlign: 'center',
@@ -1467,60 +1549,39 @@ const styles = StyleSheet.create({
   },
 
   // 詳細画面
-  detailHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  detailBackButton: {
-    paddingVertical: 4,
-    width: 70,
-  },
-  detailBackText: {
-    fontSize: 15,
-    color: COLORS.primary,
-    fontWeight: '500',
-  },
-  detailTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: COLORS.textDark,
-    letterSpacing: -0.2,
-  },
-  detailHeaderSpacer: {
-    width: 70,
-  },
   detailDateBlock: {
     alignItems: 'center',
-    marginBottom: 18,
+    marginBottom: SPACING.md,
   },
   detailDateText: {
-    fontSize: 17,
-    fontWeight: '700',
+    fontSize: TYPE_SIZE.body,
+    fontFamily: 'Inter_700Bold',
+    fontVariant: ['tabular-nums'],
     color: COLORS.textDark,
-    marginBottom: 4,
+    marginBottom: SPACING.xxs,
     letterSpacing: -0.2,
   },
   detailTimeText: {
-    fontSize: 13,
+    fontSize: TYPE_SIZE.label,
+    fontFamily: 'Inter_600SemiBold',
+    fontVariant: ['tabular-nums'],
     color: COLORS.textGray,
   },
   detailSectionLabel: {
-    fontSize: 11,
+    fontSize: TYPE_SIZE.caption,
     color: COLORS.textMuted,
     fontWeight: '600',
-    marginBottom: 8,
-    marginLeft: 4,
+    marginBottom: SPACING.xs,
+    marginLeft: SPACING.xxs,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
   detailSection: {
     backgroundColor: COLORS.white,
-    borderRadius: 14,
-    paddingVertical: 4,
-    paddingHorizontal: 16,
-    marginBottom: 20,
+    borderRadius: RADIUS.surface,
+    paddingVertical: SPACING.xxs,
+    paddingHorizontal: SPACING.md,
+    marginBottom: SPACING.lg,
     borderWidth: 1,
     borderColor: COLORS.borderLight,
   },
@@ -1528,20 +1589,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: SPACING.sm,
   },
   detailLabel: {
-    fontSize: 13,
+    fontSize: TYPE_SIZE.label,
     color: COLORS.textGray,
   },
   detailValue: {
-    fontSize: 15,
+    fontSize: TYPE_SIZE.body,
     fontWeight: '600',
     color: COLORS.textDark,
   },
   detailRateValue: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: TYPE_SIZE.emphasis,
+    fontFamily: 'Inter_700Bold',
+    fontVariant: ['tabular-nums'],
     color: COLORS.primary,
     letterSpacing: -0.5,
   },
@@ -1552,66 +1614,66 @@ const styles = StyleSheet.create({
   },
   shareButton: {
     height: 48,
-    borderRadius: 12,
+    borderRadius: RADIUS.control,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 8,
+    marginTop: SPACING.xs,
     borderWidth: 1,
     borderColor: COLORS.border,
     backgroundColor: COLORS.white,
   },
   shareButtonText: {
-    fontSize: 15,
+    fontSize: TYPE_SIZE.body,
     fontWeight: '600',
     color: COLORS.primary,
   },
   deleteButton: {
     height: 48,
-    borderRadius: 12,
+    borderRadius: RADIUS.control,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 8,
-    marginBottom: 24,
+    marginTop: SPACING.xs,
+    marginBottom: SPACING.xl,
     borderWidth: 1,
     borderColor: COLORS.dangerBorder,
     backgroundColor: COLORS.white,
   },
   deleteButtonText: {
-    fontSize: 15,
+    fontSize: TYPE_SIZE.body,
     fontWeight: '600',
     color: COLORS.danger,
   },
   // メモ表示（詳細画面）
   detailMemoText: {
-    fontSize: 14,
+    fontSize: TYPE_SIZE.label,
     color: COLORS.textBody,
-    paddingVertical: 12,
+    paddingVertical: SPACING.sm,
     lineHeight: 22,
   },
   // 開始時の回転数（setup画面最上部の強調ブロック）
   startRotationBlock: {
     backgroundColor: COLORS.white,
-    borderRadius: 14,
-    padding: 18,
-    marginTop: 8,
-    marginBottom: 12,
+    borderRadius: RADIUS.surface,
+    padding: SPACING.md,
+    marginTop: SPACING.xs,
+    marginBottom: SPACING.sm,
     borderWidth: 1.5,
     borderColor: COLORS.primary,
   },
   startRotationLabel: {
-    fontSize: 14,
+    fontSize: TYPE_SIZE.label,
     color: COLORS.textDark,
     fontWeight: '600',
-    marginBottom: 6,
+    marginBottom: SPACING.xs,
     letterSpacing: 0.2,
   },
 
   // メモ入力欄（setup・編集画面）
   memoInput: {
     backgroundColor: COLORS.white,
-    borderRadius: 12,
-    padding: 14,
-    fontSize: 14,
+    borderRadius: RADIUS.control,
+    padding: SPACING.md,
+    fontSize: TYPE_SIZE.label,
     borderWidth: 1,
     borderColor: COLORS.border,
     minHeight: 90,
@@ -1620,16 +1682,16 @@ const styles = StyleSheet.create({
     color: COLORS.textDark,
   },
   memoCounter: {
-    fontSize: 11,
+    fontSize: TYPE_SIZE.caption,
     color: COLORS.textMuted,
     textAlign: 'right',
-    marginTop: 4,
+    marginTop: SPACING.xxs,
   },
 
   // 編集画面の時刻・回転数の横並び
   editTimeRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: SPACING.sm,
   },
   editTimeItem: {
     flex: 1,
@@ -1638,16 +1700,17 @@ const styles = StyleSheet.create({
   dateRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: SPACING.xs,
   },
   dateInput: {
     flex: 1,
     backgroundColor: COLORS.white,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    fontSize: 18,
-    fontWeight: '700',
+    borderRadius: RADIUS.control,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.xs,
+    fontSize: TYPE_SIZE.metric,
+    fontFamily: 'Inter_700Bold',
+    fontVariant: ['tabular-nums'],
     borderWidth: 1,
     borderColor: COLORS.border,
     textAlign: 'center',
@@ -1657,30 +1720,31 @@ const styles = StyleSheet.create({
     flex: 1.5,
   },
   dateSeparator: {
-    fontSize: 18,
+    fontSize: TYPE_SIZE.metric,
     color: COLORS.textMuted,
   },
   // 時刻入力（時:分）
   timeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: SPACING.xxs,
   },
   timeInput: {
     flex: 1,
     backgroundColor: COLORS.white,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 4,
-    fontSize: 18,
-    fontWeight: '700',
+    borderRadius: RADIUS.control,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.xxs,
+    fontSize: TYPE_SIZE.metric,
+    fontFamily: 'Inter_700Bold',
+    fontVariant: ['tabular-nums'],
     borderWidth: 1,
     borderColor: COLORS.border,
     textAlign: 'center',
     color: COLORS.textDark,
   },
   timeSeparator: {
-    fontSize: 18,
+    fontSize: TYPE_SIZE.metric,
     color: COLORS.textMuted,
   },
 
@@ -1689,55 +1753,55 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: 12,
-    marginTop: 4,
-    marginBottom: 4,
+    borderRadius: RADIUS.control,
+    marginTop: SPACING.xxs,
+    marginBottom: SPACING.xxs,
     overflow: 'hidden',
   },
   suggestionItem: {
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.borderLight,
   },
   suggestionText: {
-    fontSize: 14,
+    fontSize: TYPE_SIZE.label,
     color: COLORS.textBody,
   },
 
   resetDefaultButton: {
     height: 42,
-    borderRadius: 10,
+    borderRadius: RADIUS.control,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 8,
+    marginTop: SPACING.xs,
     borderWidth: 1,
-    borderColor: COLORS.dangerBorder,
+    borderColor: COLORS.border,
     backgroundColor: COLORS.white,
   },
   resetDefaultButtonText: {
-    fontSize: 14,
-    color: COLORS.danger,
-    fontWeight: '500',
+    fontSize: TYPE_SIZE.label,
+    color: COLORS.textBody,
+    fontWeight: '600',
   },
 
   // データ管理セクション（設定画面）
   dataSection: {
-    marginTop: 28,
-    paddingTop: 20,
+    marginTop: SPACING.xl,
+    paddingTop: SPACING.lg,
     borderTopWidth: 1,
     borderTopColor: COLORS.borderLight,
   },
   dataSectionLabel: {
-    fontSize: 11,
+    fontSize: TYPE_SIZE.caption,
     color: COLORS.textMuted,
     fontWeight: '600',
-    marginBottom: 10,
+    marginBottom: SPACING.sm,
     letterSpacing: 0.5,
   },
   clearDataButton: {
     height: 44,
-    borderRadius: 12,
+    borderRadius: RADIUS.control,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
@@ -1745,21 +1809,21 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
   },
   clearDataButtonText: {
-    fontSize: 14,
+    fontSize: TYPE_SIZE.label,
     fontWeight: '600',
     color: COLORS.danger,
   },
 
   // セッションカード
   listContent: {
-    paddingBottom: 16,
+    paddingBottom: SPACING.md,
   },
   sessionCard: {
     backgroundColor: COLORS.white,
-    borderRadius: 16,
-    paddingVertical: 16,
-    paddingHorizontal: 18,
-    marginBottom: 12,
+    borderRadius: RADIUS.surface,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    marginBottom: SPACING.sm,
     borderWidth: 1,
     borderColor: COLORS.borderLight,
   },
@@ -1768,7 +1832,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: SPACING.sm,
   },
   cardHeroLeft: {
     flex: 1,
@@ -1777,85 +1841,83 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   cardRateValue: {
-    fontSize: 34,
-    fontWeight: '700',
+    fontSize: TYPE_SIZE.cardRate,
+    fontFamily: 'Inter_700Bold',
+    fontVariant: ['tabular-nums'],
     color: COLORS.primary,
     lineHeight: 38,
     letterSpacing: -0.5,
   },
   cardRateLabel: {
-    fontSize: 11,
+    fontSize: TYPE_SIZE.caption,
     color: COLORS.textMuted,
     marginTop: 2,
     letterSpacing: 0.3,
   },
   cardDate: {
-    fontSize: 12,
+    fontSize: TYPE_SIZE.caption,
+    fontFamily: 'Inter_600SemiBold',
+    fontVariant: ['tabular-nums'],
     color: COLORS.textGray,
-    fontWeight: '500',
   },
   cardTime: {
-    fontSize: 11,
+    fontSize: TYPE_SIZE.caption,
+    fontFamily: 'Inter_600SemiBold',
+    fontVariant: ['tabular-nums'],
     color: COLORS.textMuted,
     marginTop: 2,
   },
   cardDivider: {
     height: 1,
     backgroundColor: COLORS.borderLight,
-    marginVertical: 4,
-    marginBottom: 12,
+    marginVertical: SPACING.xxs,
+    marginBottom: SPACING.sm,
   },
   cardStore: {
-    fontSize: 12,
+    fontSize: TYPE_SIZE.caption,
     color: COLORS.textGray,
-    marginBottom: 4,
+    marginBottom: SPACING.xxs,
   },
   cardMachine: {
-    fontSize: 15,
+    fontSize: TYPE_SIZE.body,
     fontWeight: '600',
     color: COLORS.textDark,
-    marginBottom: 10,
+    marginBottom: SPACING.sm,
   },
   cardCountsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
   cardCount: {
-    fontSize: 13,
+    fontSize: TYPE_SIZE.label,
     color: COLORS.textBody,
-    fontWeight: '500',
   },
 
   // フォーム共通
   label: {
-    fontSize: 13,
+    fontSize: TYPE_SIZE.label,
     color: COLORS.textBody,
     fontWeight: '600',
-    marginTop: 18,
-    marginBottom: 8,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.xs,
     letterSpacing: 0.2,
   },
   required: {
     color: COLORS.danger,
-    fontSize: 11,
-    fontWeight: '500',
-  },
-  optional: {
-    color: COLORS.textMuted,
-    fontSize: 11,
-    fontWeight: '400',
+    fontSize: TYPE_SIZE.caption,
+    fontWeight: '600',
   },
   hint: {
-    fontSize: 12,
+    fontSize: TYPE_SIZE.caption,
     color: COLORS.textMuted,
-    marginBottom: 8,
+    marginBottom: SPACING.xs,
     marginTop: -2,
   },
   input: {
     backgroundColor: COLORS.white,
-    borderRadius: 12,
-    padding: 14,
-    fontSize: 15,
+    borderRadius: RADIUS.control,
+    padding: SPACING.md,
+    fontSize: TYPE_SIZE.body,
     borderWidth: 1,
     borderColor: COLORS.border,
     color: COLORS.textDark,
@@ -1863,10 +1925,11 @@ const styles = StyleSheet.create({
   // 遊技中画面用の大きい入力欄
   inputLarge: {
     backgroundColor: COLORS.white,
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 28,
-    fontWeight: '700',
+    borderRadius: RADIUS.control,
+    padding: SPACING.md,
+    fontSize: TYPE_SIZE.input,
+    fontFamily: 'Inter_700Bold',
+    fontVariant: ['tabular-nums'],
     borderWidth: 1,
     borderColor: COLORS.border,
     textAlign: 'center',
@@ -1891,53 +1954,54 @@ const styles = StyleSheet.create({
   // 遊技中画面の入力エリア全体
   playingContent: {
     flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 6,
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.xs,
     justifyContent: 'center',
   },
   // リセットして続けるボタンの独立配置行（入力エリアとフッターの間）
   resetButtonRow: {
-    paddingHorizontal: 16,
-    paddingBottom: 4,
+    paddingHorizontal: SPACING.md,
+    paddingBottom: SPACING.xxs,
   },
 
   // 遊技中画面の下部固定フッター
   playingFooter: {
-    paddingHorizontal: 16,
-    paddingBottom: 18,
-    paddingTop: 6,
+    paddingHorizontal: SPACING.md,
+    paddingBottom: SPACING.md,
+    paddingTop: SPACING.xs,
     borderTopWidth: 1,
     borderTopColor: COLORS.borderLight,
     backgroundColor: COLORS.white,
   },
 
   playingStoreName: {
-    fontSize: 11,
+    fontSize: TYPE_SIZE.caption,
     color: COLORS.textMuted,
     marginBottom: 1,
     letterSpacing: 0.3,
   },
   playingMachineName: {
-    fontSize: 13,
+    fontSize: TYPE_SIZE.label,
     fontWeight: '600',
     color: COLORS.textBody,
-    marginBottom: 4,
+    marginBottom: SPACING.xxs,
   },
   playingLabel: {
-    fontSize: 12,
+    fontSize: TYPE_SIZE.caption,
     color: COLORS.textGray,
     fontWeight: '600',
     letterSpacing: 0.3,
-    marginBottom: 4,
+    marginBottom: SPACING.xxs,
   },
 
   // 遊技中の入力欄
   playingInput: {
     backgroundColor: COLORS.white,
-    borderRadius: 12,
+    borderRadius: RADIUS.control,
     height: 54,
-    fontSize: 26,
-    fontWeight: '700',
+    fontSize: TYPE_SIZE.input,
+    fontFamily: 'Inter_700Bold',
+    fontVariant: ['tabular-nums'],
     borderWidth: 1,
     borderColor: COLORS.border,
     textAlign: 'center',
@@ -1948,44 +2012,46 @@ const styles = StyleSheet.create({
   // ボタン行（+/- 共通の横並び）
   btnRow: {
     flexDirection: 'row',
-    gap: 6,
-    marginTop: 5,
+    gap: SPACING.xs,
+    marginTop: SPACING.xxs,
   },
   // 加算ボタン（青・減算の2倍の高さ）
   btnIncrement: {
     flex: 1,
     height: 54,
     backgroundColor: COLORS.primary,
-    borderRadius: 12,
+    borderRadius: RADIUS.control,
     alignItems: 'center',
     justifyContent: 'center',
   },
   btnIncrementText: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: TYPE_SIZE.body,
+    fontFamily: 'Inter_600SemiBold',
+    fontVariant: ['tabular-nums'],
     color: COLORS.white,
   },
   // 減算ボタン（赤・加算の半分の高さ）
   btnDecrement: {
     flex: 1,
-    height: 28,
+    height: 40,
     backgroundColor: COLORS.white,
-    borderRadius: 10,
+    borderRadius: RADIUS.control,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: COLORS.border,
   },
   btnDecrementText: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: TYPE_SIZE.label,
+    fontFamily: 'Inter_600SemiBold',
+    fontVariant: ['tabular-nums'],
     color: COLORS.textGray,
   },
 
   // リセットして続けるボタン
   resetButton: {
     height: 42,
-    borderRadius: 10,
+    borderRadius: RADIUS.control,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
@@ -1993,7 +2059,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primaryLight,
   },
   resetButtonText: {
-    fontSize: 14,
+    fontSize: TYPE_SIZE.label,
     fontWeight: '600',
     color: COLORS.primary,
   },
@@ -2002,27 +2068,28 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     backgroundColor: COLORS.borderLight,
-    marginVertical: 8,
+    marginVertical: SPACING.xs,
   },
 
   // 遊技中画面の上部エリア
   rateDisplay: {
     backgroundColor: COLORS.white,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
     alignItems: 'center',
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
   rateDisplayValue: {
-    fontSize: 40,
-    fontWeight: '700',
+    fontSize: TYPE_SIZE.liveRate,
+    fontFamily: 'Inter_700Bold',
+    fontVariant: ['tabular-nums'],
     color: COLORS.primary,
     lineHeight: 46,
     letterSpacing: -1,
   },
   rateUnit: {
-    fontSize: 11,
+    fontSize: TYPE_SIZE.caption,
     color: COLORS.textMuted,
     marginTop: 2,
     letterSpacing: 0.3,
@@ -2031,8 +2098,8 @@ const styles = StyleSheet.create({
   // 総回転数・総使用玉数の横並び表示
   totalRow: {
     flexDirection: 'row',
-    marginTop: 8,
-    paddingTop: 8,
+    marginTop: SPACING.xs,
+    paddingTop: SPACING.xs,
     borderTopWidth: 1,
     borderTopColor: COLORS.borderLight,
     width: '100%',
@@ -2046,14 +2113,15 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.borderLight,
   },
   totalLabel: {
-    fontSize: 11,
+    fontSize: TYPE_SIZE.caption,
     color: COLORS.textMuted,
     marginBottom: 2,
     letterSpacing: 0.3,
   },
   totalValue: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: TYPE_SIZE.metric,
+    fontFamily: 'Inter_700Bold',
+    fontVariant: ['tabular-nums'],
     color: COLORS.textDark,
   },
 
@@ -2061,26 +2129,40 @@ const styles = StyleSheet.create({
   primaryButton: {
     backgroundColor: COLORS.primary,
     height: 48,
-    borderRadius: 14,
+    borderRadius: RADIUS.surface,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 12,
+    marginTop: SPACING.sm,
   },
   primaryButtonText: {
     color: COLORS.white,
-    fontSize: 16,
+    fontSize: TYPE_SIZE.body,
     fontWeight: '600',
     letterSpacing: 0.2,
+  },
+  outlineButton: {
+    height: 48,
+    borderRadius: RADIUS.control,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: SPACING.xs,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
+  },
+  outlineButtonText: {
+    color: COLORS.primary,
+    fontSize: TYPE_SIZE.body,
+    fontWeight: '600',
   },
   secondaryButton: {
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 6,
+    marginTop: SPACING.xs,
   },
   secondaryButtonText: {
     color: COLORS.textMuted,
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: TYPE_SIZE.label,
   },
 });

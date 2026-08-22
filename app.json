@@ -2,7 +2,7 @@
   "expo": {
     "name": "パチカウント",
     "slug": "rotation-counter",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -36,7 +36,8 @@
           "androidAppId": "ca-app-pub-5570948445738089~2165746874",
           "iosAppId": "ca-app-pub-5570948445738089~5313033823"
         }
-      ]
+      ],
+      "expo-font"
     ],
     "extra": {
       "eas": {
