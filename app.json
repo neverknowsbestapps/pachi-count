@@ -2,7 +2,7 @@
   "expo": {
     "name": "パチカウント",
     "slug": "rotation-counter",
-    "version": "1.2.0",
+    "version": "1.2.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -13,6 +13,12 @@
       "icon": "./assets/icon-ios.png",
       "config": {
         "usesNonExemptEncryption": false
+      },
+      "infoPlist": {
+        "CFBundleDevelopmentRegion": "ja",
+        "CFBundleLocalizations": [
+          "ja"
+        ]
       }
     },
     "android": {
