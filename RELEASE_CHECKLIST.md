@@ -21,7 +21,7 @@
 | 公開中のバージョン | `versionCode: 7` / バージョン名 `1.0.0`（2026-08-01 公開）。**すでに広告入りのビルド**。<br>広告を足したあとも `app.json` の `version` を上げずにビルドしたため、バージョン名が 1.0.0 のまま |
 | 審査中のバージョン | `versionCode: 9` / バージョン名 `1.2.0`（2026-08-22 に審査送信）。UI のデザイン刷新＋新スクリーンショット |
 | プライバシーポリシー | https://neverknowsbestapps.github.io/pachicount-privacy/ （`neverknowsbestapps.github.io` リポジトリの `pachicount-privacy/index.html`）※**広告対応に改訂して公開済み（2026-07-31）** |
-| 広告 | Android・iOSとも本番ID設定済み。AndroidはAdMobで準備完了、iOSはApp Store連携待ち |
+| 広告 | Android・iOSとも本番ID設定済み。AdMob の承認状況は両方とも「準備完了」（2026-08-24） |
 
 > ⚠️ 広告を入れたので、次のアップデートは**コードを直すだけでは出せません**。
 > プライバシーポリシー・Play Console の申告・AdMob 側の設定がセットで必要です（フェーズ2〜4）。
