@@ -39,3 +39,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Claude Code の手元だけの許可設定
+.claude/settings.local.json
