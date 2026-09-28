@@ -5,7 +5,7 @@
     "version": "1.2.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "com.neverknowsbestapps.pachicount",
       "appStoreUrl": "https://apps.apple.com/jp/app/id6799788161",

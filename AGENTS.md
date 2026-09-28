@@ -44,7 +44,7 @@ node -e "const fs=require('fs');require('@babel/parser').parse(fs.readFileSync('
 ## アーキテクチャ
 
 ### 単一ファイル構成
-すべてのコードは **`App.js`（約1,900行）に集約**されている。意図的に1ファイルで保守している（初心者が全体を把握しやすくするため）。安易にファイル分割しない。
+すべてのコードは **`App.js`（約2,200行）に集約**されている。意図的に1ファイルで保守している（初心者が全体を把握しやすくするため）。安易にファイル分割しない。
 
 ### 画面遷移（React Navigation 不使用）
 `screen` という state 1つで画面を切り替える。画面名は `SCREEN` 定数で管理：
@@ -94,9 +94,14 @@ node -e "const fs=require('fs');require('@babel/parser').parse(fs.readFileSync('
 
 ## コード規約
 
-### 色は `COLORS` 定数で一元管理
-色のハードコード（`'#0066FF'` など）は禁止。必ず `COLORS.primary` のように参照する。
-配色は Apple 系のミニマルデザイン（白基調 + 鮮やかな青）。
+### 色は `THEMES` 定数で一元管理（ライト／ダークの2セット）
+色のハードコード（`'#0066FF'` など）は禁止。`THEMES.light` / `THEMES.dark` に同じ名前で定義し、
+画面では `colors.primary` のようにテーマ経由で参照する。
+スタイルは `makeStyles(colors)` が作り、`App()` 内で `styles` として使う。
+再利用コンポーネント（`ScreenHeader` など）は `useContext(ThemeContext)` から `styles` を受け取る。
+表示モードは設定（`settings.theme`: `auto` / `light` / `dark`）で切り替え、`auto` は端末に従う。
+配色は Apple 系のミニマルデザイン（白基調 + 青。ダークは濃紺寄りのグレー3段）。
+面の高さは枠線ではなく影（`surfaceShadow`）で出す。ダークでは影を付けず面の明るさの差で表す。
 
 ### 画面名は `SCREEN` 定数を使う
 `setScreen('home')` ではなく `setScreen(SCREEN.HOME)`。タイプミスを防ぐため。
