@@ -33,7 +33,7 @@ VERSION = "1.3.0"
 # crop は素の高さに対する割合で [上, 下]。上はステータスバー（時計など）を切るため、
 # 下は広告バナーなど見せたくない部分を切るため。None なら CROP_TOP_RATIO だけ切る
 SHOTS = [
-    ("01-playing.png", "01-playing.png", "遊技中に1タップで回転数を記録", None),
+    ("01-playing.png", "01-playing.png", "1タップで回転数を記録", None),
     ("02-detail.png", "02-detail.png", "回転率を自動計算", None),
     ("03-home.png", "03-home.png", "記録は一覧で管理・共有", [0.0, 0.825]),
     ("04-settings.png", "04-settings.png", "ボタンの数値は自由に設定", None),
