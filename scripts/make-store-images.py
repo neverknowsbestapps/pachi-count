@@ -29,12 +29,14 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = Path(__file__).resolve().parent.parent
 VERSION = "1.3.0"
 
-# 見出しは1行。長ければ字が自動で縮む
+# 見出しは1行。長ければ字が自動で縮む。
+# crop は素の高さに対する割合で [上, 下]。上はステータスバー（時計など）を切るため、
+# 下は広告バナーなど見せたくない部分を切るため。None なら CROP_TOP_RATIO だけ切る
 SHOTS = [
-    ("01-playing.png", "01-playing.png", "遊技中に1タップで回転数を記録"),
-    ("02-detail.png", "02-detail.png", "回転率を自動計算"),
-    ("03-reset.png", "03-reset.png", "大当たり後も累積で記録"),
-    ("04-home.png", "04-home.png", "記録は一覧で管理・共有"),
+    ("01-playing.png", "01-playing.png", "遊技中に1タップで回転数を記録", None),
+    ("02-detail.png", "02-detail.png", "回転率を自動計算", None),
+    ("03-home.png", "03-home.png", "記録は一覧で管理・共有", [0.0, 0.825]),
+    ("04-settings.png", "04-settings.png", "ボタンの数値は自由に設定", None),
 ]
 
 SIZES = {
@@ -53,7 +55,7 @@ ACCENT = "#2EA8FF"
 
 # 素のスクショの上部（時計・電池などのステータスバー）を切る高さ。
 # 素の高さに対する割合
-CROP_TOP_RATIO = 0.055
+CROP_TOP_RATIO = 0.06
 
 CAPTION_TOP = 0.075
 CAPTION_SIZE = 0.068
@@ -92,7 +94,7 @@ def rounded_mask(size, radius: int) -> Image.Image:
     return mask
 
 
-def build(source: Path, output: Path, caption: str, size) -> None:
+def build(source: Path, output: Path, caption: str, size, crop=None) -> None:
     width, height = size
     canvas = Image.new("RGB", size, BACKGROUND)
     draw = ImageDraw.Draw(canvas)
@@ -115,8 +117,10 @@ def build(source: Path, output: Path, caption: str, size) -> None:
     )
 
     shot = Image.open(source).convert("RGB")
-    crop_top = round(shot.height * CROP_TOP_RATIO)
-    shot = shot.crop((0, crop_top, shot.width, shot.height))
+    top_ratio, bottom_ratio = (crop or [0.0, 1.0])
+    crop_top = round(shot.height * max(top_ratio, CROP_TOP_RATIO))
+    crop_bottom = round(shot.height * bottom_ratio)
+    shot = shot.crop((0, crop_top, shot.width, crop_bottom))
     shot_w = round(width * SHOT_WIDTH)
     shot_h = round(shot_w * shot.height / shot.width)
     shot = shot.resize((shot_w, shot_h), Image.Resampling.LANCZOS)
@@ -148,12 +152,12 @@ def main() -> None:
     out_root = ROOT / "assets" / "store" / version
     for store, size in SIZES.items():
         outputs = []
-        for source_name, output_name, caption in SHOTS:
+        for source_name, output_name, caption, crop in SHOTS:
             source = raw / source_name
             if not source.exists():
                 raise FileNotFoundError(f"元画像がありません: {source}")
             output = out_root / store / output_name
-            build(source, output, caption, size)
+            build(source, output, caption, size, crop)
             outputs.append(output)
         make_sheet(outputs, out_root / f"sheet-{store}.png")
         print(f"{store}: {len(outputs)} 枚 ({size[0]}x{size[1]}) -> {out_root / store}")
