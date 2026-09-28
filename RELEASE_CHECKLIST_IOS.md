@@ -203,6 +203,21 @@ npx eas-cli submit --platform ios --latest
 
 ---
 
+## バージョン 1.3.0（改善ラウンド1）
+
+デザイン刷新＋ダークモード、レビュー依頼（3回目の保存で一度だけ）、初回起動の案内、
+見出し付きスクリーンショット4枚と掲載文（サブタイトル・キーワード・プロモーションテキスト）の更新。
+文面は `STORE_LISTING.md`、画像は `assets/store/1.3.0/ios-6.7/`。
+
+- [x] 🔴 `app.json` の `version` を 1.3.0 に変更（ビルド番号は EAS が自動採番）
+- [x] 🔴 `eas build --platform all --profile production` → iOS は `eas submit -p ios --profile production --latest`、Android は AAB を手でアップロード
+- [x] 🔴 App Store Connect でバージョン 1.3.0 を作成、スクショ・サブタイトル・キーワード・プロモーションテキスト・最新情報を更新
+- [x] 🔴 **2026-09-28、両ストアとも審査に提出**
+- [ ] 🟡 公開後、App Store 版でレビュー依頼が3回目の保存で出ることを確認（TestFlight では出ない）
+- [ ] 🟡 公開後、検索結果からのタップ率（6.8%）とレビュー件数の変化を1か月後に見る
+
+---
+
 ## バージョン 1.2.1（AdMob の確認を通すためだけの更新）
 
 コードの変更はなし。App Store の掲載情報に**マーケティングURL**を入れるためだけに出した。
