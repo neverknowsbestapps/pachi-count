@@ -20,6 +20,7 @@ import { Inter_600SemiBold } from '@expo-google-fonts/inter/600SemiBold';
 import { Inter_700Bold } from '@expo-google-fonts/inter/700Bold';
 
 import { initAds, AdBanner } from './ads';
+import { noteSessionSavedAndMaybeRequestReview } from './review';
 
 // --- Web 対応シム ---
 // react-native-web には Alert / Share が無いため、Web では
@@ -387,6 +388,8 @@ export default function App() {
       await saveNameHistory(machineName.trim(), storeName.trim());
       resetForm();
       setScreen(SCREEN.HOME);
+      // ホームに戻ってから、条件がそろえばレビュー依頼を出す（3回目の保存で一度だけ）
+      setTimeout(noteSessionSavedAndMaybeRequestReview, 600);
     } catch (error) {
       Alert.alert('エラー', 'データの保存に失敗しました');
     }

@@ -19,6 +19,7 @@
 - **Expo SDK 56** / React Native 0.85 / React 19
 - **JavaScript のみ**（TypeScript は使わない）
 - `@react-native-async-storage/async-storage` 2.2.0（ローカル永続化）
+- `expo-store-review`（3回目の保存後にレビュー依頼を一度だけ出す。`review.js`）
 - 外部UIライブラリ・ナビゲーションライブラリは**使わない**
 
 > ⚠️ Expo はバージョンで API が大きく変わる。コードを書く前に必ず
@@ -66,6 +67,7 @@ node -e "const fs=require('fs');require('@babel/parser').parse(fs.readFileSync('
 - `@rotation_sessions_v3` — セッション記録の配列
 - `@rotation_settings_v1` — ユーザー設定（基準玉数・ボタン値）
 - `@rotation_names_v1` — 機種名・店舗名の入力履歴
+- `@rotation_review_v1` — レビュー依頼の保存回数と表示済みフラグ（`review.js`）
 
 ---
 
