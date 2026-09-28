@@ -802,8 +802,8 @@ export default function App() {
   if (showOnboarding && screen === SCREEN.HOME) {
     const steps = [
       { n: '1', text: '台の回転数を入力して遊技開始' },
-      { n: '2', text: '玉を入れるたびにボタンで使用玉数を足す' },
-      { n: '3', text: '保存すると回転率が一覧に並ぶ' },
+      { n: '2', text: '使った玉数と回転数を入れると回転率を計算' },
+      { n: '3', text: '保存すると記録が一覧に並ぶ' },
     ];
     return withTheme(
       <View style={styles.container}>
