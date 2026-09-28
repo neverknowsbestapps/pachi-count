@@ -74,6 +74,7 @@ const Share = IS_WEB ? { share: webShare } : RNShare;
 const STORAGE_KEY = '@rotation_sessions_v3';
 const SETTINGS_KEY = '@rotation_settings_v1';
 const NAMES_KEY = '@rotation_names_v1';
+const ONBOARDING_KEY = '@rotation_onboarding_v1'; // 初回案内を表示済みなら '1'
 
 // 設定のデフォルト値
 const DEFAULT_SETTINGS = {
@@ -241,14 +242,49 @@ export default function App() {
   const [accumulatedBalls, setAccumulatedBalls] = useState(0);         // リセット前の累積使用玉数
   const [newResetRotation, setNewResetRotation] = useState('');        // リセット後の開始回転数入力
 
+  // 初回起動の案内を出すか（null = まだ判定中）
+  const [showOnboarding, setShowOnboarding] = useState(null);
+
   // アプリ起動時にデータ・設定・履歴を読み込む
   useEffect(() => {
-    loadSessions();
     loadSettings();
     loadNames();
     // 広告の下準備。使えない環境（Expo Go / ブラウザ）では何も起きない
     initAds();
+    // 記録を読み込んでから、初回案内を出すか決める
+    (async () => {
+      const loaded = await loadSessions();
+      await decideOnboarding(loaded);
+    })();
   }, []);
+
+  // 初回案内は「表示済みフラグがなく、記録も1件もない」ときだけ出す。
+  // アップデートで初めてこの判定を通る既存ユーザーは記録があるので出さない。
+  const decideOnboarding = async (loadedSessions) => {
+    try {
+      const seen = await AsyncStorage.getItem(ONBOARDING_KEY);
+      if (seen !== null) {
+        setShowOnboarding(false);
+        return;
+      }
+      if (loadedSessions.length > 0) {
+        await AsyncStorage.setItem(ONBOARDING_KEY, '1');
+        setShowOnboarding(false);
+        return;
+      }
+      setShowOnboarding(true);
+    } catch (_) {
+      setShowOnboarding(false);
+    }
+  };
+
+  // 初回案内を閉じる（二度と出さない）
+  const handleFinishOnboarding = async () => {
+    setShowOnboarding(false);
+    try {
+      await AsyncStorage.setItem(ONBOARDING_KEY, '1');
+    } catch (_) {}
+  };
 
   // AsyncStorageから設定を読み込む
   const loadSettings = async () => {
@@ -294,15 +330,19 @@ export default function App() {
   };
 
   // AsyncStorageからデータを読み込む
+  // 読み込んだ配列を返す（起動時の初回案内の判定に使う）
   const loadSessions = async () => {
     try {
       const data = await AsyncStorage.getItem(STORAGE_KEY);
       if (data !== null) {
-        setSessions(JSON.parse(data));
+        const parsed = JSON.parse(data);
+        setSessions(parsed);
+        return parsed;
       }
     } catch (error) {
       Alert.alert('エラー', 'データの読み込みに失敗しました');
     }
+    return [];
   };
 
   // フォームを全リセット
@@ -755,6 +795,42 @@ export default function App() {
   // ホーム画面
   // ========================================
   if (!fontsLoaded) return null;
+
+  // ========================================
+  // 初回起動の案内（1画面・一度だけ）
+  // ========================================
+  if (showOnboarding && screen === SCREEN.HOME) {
+    const steps = [
+      { n: '1', text: '台の回転数を入力して遊技開始' },
+      { n: '2', text: '玉を入れるたびにボタンで使用玉数を足す' },
+      { n: '3', text: '保存すると回転率が一覧に並ぶ' },
+    ];
+    return withTheme(
+      <View style={styles.container}>
+        <StatusBar style={statusBarStyle} />
+        <View style={styles.onboardingBody}>
+          <Text style={styles.onboardingTitle}>パチカウント</Text>
+          <Text style={styles.onboardingSubtitle}>パチンコの回転数と回転率を記録するアプリ</Text>
+          <View style={styles.onboardingCard}>
+            {steps.map((step, i) => (
+              <View
+                key={step.n}
+                style={[styles.onboardingStep, i < steps.length - 1 && styles.onboardingStepBorder]}
+              >
+                <View style={styles.onboardingBadge}>
+                  <Text style={styles.onboardingBadgeText}>{step.n}</Text>
+                </View>
+                <Text style={styles.onboardingStepText}>{step.text}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+        <View style={styles.homeFooter}>
+          <AppButton label="はじめる" onPress={handleFinishOnboarding} />
+        </View>
+      </View>
+    );
+  }
 
   if (screen === SCREEN.HOME) {
     return withTheme(
@@ -1605,6 +1681,62 @@ function makeStyles(C) {
     // ホーム: 遊技開始ボタンの下部余白（ジェスチャーバー/ホームインジケーター回避）
     homeFooter: {
       paddingBottom: Platform.OS === 'ios' ? 34 : 24,
+    },
+
+    // 初回起動の案内
+    onboardingBody: {
+      flex: 1,
+      justifyContent: 'center',
+      paddingBottom: SPACING.xl,
+    },
+    onboardingTitle: {
+      fontSize: 32,
+      fontWeight: '700',
+      color: C.textDark,
+      textAlign: 'center',
+      letterSpacing: -0.5,
+    },
+    onboardingSubtitle: {
+      fontSize: TYPE_SIZE.label + 1,
+      color: C.textMuted,
+      textAlign: 'center',
+      marginTop: SPACING.xs,
+      marginBottom: SPACING.xl,
+    },
+    onboardingCard: {
+      backgroundColor: C.surface,
+      borderRadius: RADIUS.surface,
+      paddingHorizontal: SPACING.md,
+      ...surfaceShadow(C),
+    },
+    onboardingStep: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: SPACING.md,
+      gap: SPACING.sm,
+    },
+    onboardingStepBorder: {
+      borderBottomWidth: 1,
+      borderBottomColor: C.divider,
+    },
+    onboardingBadge: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: C.primaryTint,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    onboardingBadgeText: {
+      fontSize: TYPE_SIZE.label + 1,
+      fontFamily: 'Inter_700Bold',
+      color: C.primaryDeep,
+    },
+    onboardingStepText: {
+      flex: 1,
+      fontSize: TYPE_SIZE.body,
+      color: C.textBody,
+      lineHeight: 22,
     },
 
     // 画面共通ヘッダー

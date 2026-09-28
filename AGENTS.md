@@ -68,6 +68,7 @@ node -e "const fs=require('fs');require('@babel/parser').parse(fs.readFileSync('
 - `@rotation_settings_v1` — ユーザー設定（基準玉数・ボタン値）
 - `@rotation_names_v1` — 機種名・店舗名の入力履歴
 - `@rotation_review_v1` — レビュー依頼の保存回数と表示済みフラグ（`review.js`）
+- `@rotation_onboarding_v1` — 初回起動の案内を表示済みなら `'1'`（記録が1件以上あれば案内を出さずに立てる）
 
 ---
 
