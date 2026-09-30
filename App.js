@@ -13,7 +13,7 @@ import {
   Share as RNShare,
   useColorScheme,
 } from 'react-native';
-import { useState, useEffect, useMemo, createContext, useContext } from 'react';
+import { useState, useEffect, useMemo, useRef, createContext, useContext } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFonts } from 'expo-font';
 import { Inter_600SemiBold } from '@expo-google-fonts/inter/600SemiBold';
@@ -189,6 +189,8 @@ export default function App() {
   const [screen, setScreen] = useState(SCREEN.HOME);
   // 保存済みセッション一覧
   const [sessions, setSessions] = useState([]);
+  // 記録の読み込みに成功したか。失敗したまま書き込むと過去の記録を空で上書きしてしまう
+  const sessionsLoaded = useRef(false);
 
   // グローバル設定
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
@@ -399,15 +401,33 @@ export default function App() {
   const loadSessions = async () => {
     try {
       const data = await AsyncStorage.getItem(STORAGE_KEY);
-      if (data !== null) {
-        const parsed = JSON.parse(data);
-        setSessions(parsed);
-        return parsed;
-      }
+      const parsed = data !== null ? JSON.parse(data) : [];
+      if (!Array.isArray(parsed)) throw new Error('記録の形が不正');
+      sessionsLoaded.current = true;
+      setSessions(parsed);
+      return parsed;
     } catch (error) {
       Alert.alert('エラー', 'データの読み込みに失敗しました');
     }
     return [];
+  };
+
+  // 書き込みの土台にする記録一覧を返す。
+  // 起動時の読み込みに失敗していた場合は、空の一覧で上書きしないよう保存先を読み直す。
+  // 読み直しも失敗したら null を返す（呼び出し側は書き込まない）。
+  const getSessionsForWrite = async () => {
+    if (sessionsLoaded.current) return sessions;
+    try {
+      const data = await AsyncStorage.getItem(STORAGE_KEY);
+      const parsed = data !== null ? JSON.parse(data) : [];
+      if (!Array.isArray(parsed)) throw new Error('記録の形が不正');
+      sessionsLoaded.current = true;
+      setSessions(parsed);
+      return parsed;
+    } catch (_) {
+      Alert.alert('エラー', '過去の記録を読み込めないため、保存を中止しました');
+      return null;
+    }
   };
 
   // フォームを全リセット
@@ -468,10 +488,13 @@ export default function App() {
       return;
     }
 
+    const base = await getSessionsForWrite();
+    if (base === null) return;
+
     const now = new Date();
     const today = now.toLocaleDateString('ja-JP');
     // 「続きから遊技」で始めた場合は元の記録を置き換える（同じ id のまま）
-    const original = continueId ? sessions.find((s) => s.id === continueId) : null;
+    const original = continueId ? base.find((s) => s.id === continueId) : null;
     const newStartTime = startTime
       ? startTime.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
       : '--';
@@ -495,7 +518,7 @@ export default function App() {
     try {
       const updatedSessions = [
         newSession,
-        ...sessions.filter((s) => s.id !== newSession.id),
+        ...base.filter((s) => s.id !== newSession.id),
       ];
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updatedSessions));
       setSessions(updatedSessions);
@@ -623,7 +646,9 @@ export default function App() {
     const startTime = `${pad(sh)}:${pad(sm)}`;
     const endTime = `${pad(eh)}:${pad(em)}`;
 
-    const updated = sessions.map((s) =>
+    const base = await getSessionsForWrite();
+    if (base === null) return;
+    const updated = base.map((s) =>
       s.id === editDraft.id
         ? {
             ...s,
@@ -706,7 +731,9 @@ export default function App() {
           text: '削除する',
           style: 'destructive',
           onPress: async () => {
-            const updated = sessions.filter((s) => s.id !== id);
+            const base = await getSessionsForWrite();
+            if (base === null) return;
+            const updated = base.filter((s) => s.id !== id);
             try {
               await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
               setSessions(updated);
@@ -733,6 +760,7 @@ export default function App() {
           onPress: async () => {
             try {
               await AsyncStorage.removeItem(STORAGE_KEY);
+              sessionsLoaded.current = true; // 空にした状態が正しい中身になる
               setSessions([]);
               setScreen(SCREEN.HOME);
             } catch (_) {
