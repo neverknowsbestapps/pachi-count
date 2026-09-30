@@ -200,6 +200,9 @@ export default function App() {
   const [draftBallButtons, setDraftBallButtons] = useState(['125', '250', '1000']);
   const [draftRotationButtons, setDraftRotationButtons] = useState(['1', '10', '100']);
   const [draftTheme, setDraftTheme] = useState('auto');
+  // 記録の取り込み（設定画面）。貼り付け欄はボタンを押してから出す
+  const [showImport, setShowImport] = useState(false);
+  const [importText, setImportText] = useState('');
 
   // 表示モード。設定が「自動」なら端末の設定に従う
   const systemScheme = useColorScheme();
@@ -446,7 +449,7 @@ export default function App() {
       setSessions(parsed);
       return parsed;
     } catch (_) {
-      Alert.alert('エラー', '過去の記録を読み込めないため、保存を中止しました');
+      Alert.alert('エラー', '過去の記録を読み込めないため、操作を中止しました');
       return null;
     }
   };
@@ -560,6 +563,8 @@ export default function App() {
     setDraftBallButtons(settings.ballButtons.map(String));
     setDraftRotationButtons(settings.rotationButtons.map(String));
     setDraftTheme(settings.theme || 'auto');
+    setShowImport(false);
+    setImportText('');
     setScreen(SCREEN.SETTINGS);
   };
 
@@ -735,6 +740,108 @@ export default function App() {
     } catch (_) {
       Alert.alert('エラー', '共有に失敗しました');
     }
+  };
+
+  // すべての記録を JSON の文字にして共有する
+  const handleExportSessions = async () => {
+    const base = await getSessionsForWrite();
+    if (base === null) return;
+    try {
+      await Share.share({
+        message: JSON.stringify({ app: 'pachi-count', version: 1, sessions: base }),
+      });
+    } catch (_) {
+      Alert.alert('エラー', '共有に失敗しました');
+    }
+  };
+
+  // 貼り付けられた文字を検査して、記録の配列にして返す（取り込めない中身なら null）
+  // 書き出した形（{ sessions: [...] }）と、記録の配列そのものの両方を受け付ける
+  const parseImportedSessions = (text) => {
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (_) {
+      return null;
+    }
+    const list = Array.isArray(data)
+      ? data
+      : (data && Array.isArray(data.sessions) ? data.sessions : null);
+    if (!list || list.length === 0) return null;
+
+    const isCount = (v) => typeof v === 'number' && isFinite(v) && v >= 0;
+    const isText = (v, max) => v === undefined || (typeof v === 'string' && v.length <= max);
+    const isTime = (v) => v === '--' || (typeof v === 'string' && /^\d{1,2}:\d{2}$/.test(v));
+    const ids = new Set();
+    const result = [];
+    for (const s of list) {
+      if (!s || typeof s !== 'object') return null;
+      if (typeof s.id !== 'string' || s.id === '' || ids.has(s.id)) return null;
+      if (typeof s.date !== 'string' || !/^\d{1,4}\/\d{1,2}\/\d{1,2}$/.test(s.date)) return null;
+      if (!isTime(s.startTime) || !isTime(s.endTime)) return null;
+      if (!isCount(s.rotations) || !isCount(s.ballsUsed)) return null;
+      if (s.startRotation !== undefined && !isCount(s.startRotation)) return null;
+      if (s.endRotation !== undefined && !isCount(s.endRotation)) return null;
+      if (!isText(s.machineName, 50) || !isText(s.storeName, 50)) return null;
+      if (!isText(s.machineNumber, 5) || !isText(s.memo, 200)) return null;
+      ids.add(s.id);
+      // 知っている項目だけを取り出す（余計な項目は持ち込まない）
+      result.push({
+        id: s.id,
+        date: s.date,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        machineName: s.machineName || '',
+        storeName: s.storeName || '',
+        machineNumber: s.machineNumber || '',
+        startRotation: s.startRotation,
+        endRotation: s.endRotation,
+        rotations: s.rotations,
+        ballsUsed: s.ballsUsed,
+        memo: s.memo || '',
+      });
+    }
+    return result;
+  };
+
+  // 記録を取り込む（1回目は貼り付け欄を出す。2回目で中身を検査して置き換える）
+  const handleImportSessions = () => {
+    if (!showImport) {
+      setShowImport(true);
+      return;
+    }
+    if (!importText.trim()) {
+      Alert.alert('入力エラー', '書き出したデータを貼り付けてください');
+      return;
+    }
+    const imported = parseImportedSessions(importText);
+    if (imported === null) {
+      Alert.alert('入力エラー', '取り込めるデータではありません');
+      return;
+    }
+    Alert.alert(
+      '今の記録を置き換えますか？',
+      `今の記録はすべて消え、取り込んだ${imported.length}件に置き換わります。この操作は元に戻せません`,
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: '置き換える',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(imported));
+              sessionsLoaded.current = true; // 取り込んだ中身が正しい中身になる
+              setSessions(imported);
+              setShowImport(false);
+              setImportText('');
+              setScreen(SCREEN.HOME);
+            } catch (_) {
+              Alert.alert('エラー', 'データの保存に失敗しました');
+            }
+          },
+        },
+      ]
+    );
   };
 
   // セッション削除
@@ -1462,6 +1569,32 @@ export default function App() {
           <View style={styles.dataSection}>
             <Text style={styles.dataSectionLabel}>データ管理</Text>
             <TouchableOpacity
+              style={styles.dataButton}
+              activeOpacity={BUTTON_ACTIVE_OPACITY}
+              onPress={handleExportSessions}
+            >
+              <Text style={styles.dataButtonText}>すべての記録を書き出す</Text>
+            </TouchableOpacity>
+            {showImport ? (
+              <TextInput
+                style={styles.importInput}
+                value={importText}
+                onChangeText={setImportText}
+                multiline
+                autoFocus
+                autoCapitalize="none"
+                autoCorrect={false}
+                textAlignVertical="top"
+              />
+            ) : null}
+            <TouchableOpacity
+              style={styles.dataButton}
+              activeOpacity={BUTTON_ACTIVE_OPACITY}
+              onPress={handleImportSessions}
+            >
+              <Text style={styles.dataButtonText}>記録を取り込む</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
               style={styles.clearDataButton}
               activeOpacity={BUTTON_ACTIVE_OPACITY}
               onPress={handleClearSessions}
@@ -2180,6 +2313,28 @@ function makeStyles(C) {
       fontWeight: '600',
       marginBottom: SPACING.sm,
       letterSpacing: 0.3,
+    },
+    dataButton: {
+      height: 48,
+      borderRadius: RADIUS.control,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: SPACING.xs,
+      backgroundColor: C.surface,
+      ...surfaceShadow(C),
+    },
+    dataButtonText: {
+      fontSize: TYPE_SIZE.label + 1,
+      fontWeight: '600',
+      color: C.primary,
+    },
+    // 取り込むデータの貼り付け欄
+    importInput: {
+      ...inputBase,
+      padding: SPACING.md,
+      fontSize: TYPE_SIZE.label,
+      height: 120,
+      marginBottom: SPACING.xs,
     },
     clearDataButton: {
       height: 48,
