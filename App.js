@@ -75,6 +75,7 @@ const STORAGE_KEY = '@rotation_sessions_v3';
 const SETTINGS_KEY = '@rotation_settings_v1';
 const NAMES_KEY = '@rotation_names_v1';
 const ONBOARDING_KEY = '@rotation_onboarding_v1'; // 初回案内を表示済みなら '1'
+const PLAYING_KEY = '@rotation_playing_v1'; // 遊技中の途中経過（保存・中断したら消す）
 
 // 設定のデフォルト値
 const DEFAULT_SETTINGS = {
@@ -256,7 +257,66 @@ export default function App() {
       const loaded = await loadSessions();
       await decideOnboarding(loaded);
     })();
+    // 遊技の途中でアプリが終了されていたら、遊技中画面へ戻す
+    restorePlaying();
   }, []);
+
+  // 遊技中の値が変わるたびに途中経過を書き出す
+  // （OS にアプリを終了されても、次の起動で続きから再開できるようにする）
+  useEffect(() => {
+    if (screen !== SCREEN.PLAYING && screen !== SCREEN.RESET) return;
+    AsyncStorage.setItem(
+      PLAYING_KEY,
+      JSON.stringify({
+        machineName,
+        storeName,
+        machineNumber,
+        startRotation,
+        memo,
+        ballsUsed,
+        endRotation,
+        startTime: startTime ? startTime.toISOString() : null,
+        accumulatedRotations,
+        accumulatedBalls,
+      })
+    ).catch(() => {});
+  }, [
+    screen, machineName, storeName, machineNumber, startRotation, memo,
+    ballsUsed, endRotation, startTime, accumulatedRotations, accumulatedBalls,
+  ]);
+
+  // 遊技中の途中経過を消す（保存・中断のとき）
+  const clearPlaying = () => AsyncStorage.removeItem(PLAYING_KEY).catch(() => {});
+
+  // 途中経過が残っていれば読み込んで遊技中画面へ復帰する
+  const restorePlaying = async () => {
+    try {
+      const data = await AsyncStorage.getItem(PLAYING_KEY);
+      if (data === null) return;
+      const p = JSON.parse(data);
+      const text = (v) => (typeof v === 'string' ? v : '');
+      const count = (v) => (typeof v === 'number' && isFinite(v) && v >= 0 ? v : 0);
+      // 開始回転数がなければ再開できないので捨てる
+      if (!p || isNaN(parseInt(p.startRotation, 10))) {
+        clearPlaying();
+        return;
+      }
+      const restoredStart = p.startTime ? new Date(p.startTime) : null;
+      setMachineName(text(p.machineName));
+      setStoreName(text(p.storeName));
+      setMachineNumber(text(p.machineNumber));
+      setStartRotation(text(p.startRotation));
+      setMemo(text(p.memo));
+      setBallsUsed(text(p.ballsUsed));
+      setEndRotation(text(p.endRotation));
+      setStartTime(restoredStart && !isNaN(restoredStart.getTime()) ? restoredStart : null);
+      setAccumulatedRotations(count(p.accumulatedRotations));
+      setAccumulatedBalls(count(p.accumulatedBalls));
+      setScreen(SCREEN.PLAYING);
+    } catch (_) {
+      // 読めない途中経過は無視してホームから始める
+    }
+  };
 
   // 初回案内は「表示済みフラグがなく、記録も1件もない」ときだけ出す。
   // アップデートで初めてこの判定を通る既存ユーザーは記録があるので出さない。
@@ -426,6 +486,7 @@ export default function App() {
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updatedSessions));
       setSessions(updatedSessions);
       await saveNameHistory(machineName.trim(), storeName.trim());
+      clearPlaying();
       resetForm();
       setScreen(SCREEN.HOME);
       // ホームに戻ってから、条件がそろえばレビュー依頼を出す（3回目の保存で一度だけ）
@@ -678,6 +739,7 @@ export default function App() {
           text: '中断する',
           style: 'destructive',
           onPress: () => {
+            clearPlaying();
             resetForm();
             setScreen(SCREEN.HOME);
           },
