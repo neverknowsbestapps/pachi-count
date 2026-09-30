@@ -656,11 +656,7 @@ export default function App() {
       Alert.alert('入力エラー', '終了時刻を正しく入力してください');
       return;
     }
-    // 終了時刻が開始時刻より前ではないかチェック
-    if (eh * 60 + em < sh * 60 + sm) {
-      Alert.alert('入力エラー', '終了時刻は開始時刻以降にしてください');
-      return;
-    }
+    // 終了時刻が開始時刻より前の場合は、日付をまたいだ記録（翌日の終了）として受け付ける
 
     const pad = (s) => String(s || '').padStart(2, '0');
     const date = `${year}/${month}/${day}`;
@@ -869,7 +865,8 @@ export default function App() {
     const [eh, em] = end.split(':').map(Number);
     if ([sh, sm, eh, em].some(isNaN)) return '';
     let mins = (eh * 60 + em) - (sh * 60 + sm);
-    if (mins < 0) return '';
+    // 終了が開始より前なら翌日とみなす（22:00〜0:30 など）
+    if (mins < 0) mins += 24 * 60;
     const h = Math.floor(mins / 60);
     const m = mins % 60;
     return `${h}時間${m}分`;
