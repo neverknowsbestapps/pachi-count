@@ -16,14 +16,14 @@
 
 ## 技術スタック
 
-- **Expo SDK 56** / React Native 0.85 / React 19
+- **Expo SDK 57** / React Native 0.86 / React 19
 - **JavaScript のみ**（TypeScript は使わない）
 - `@react-native-async-storage/async-storage` 2.2.0（ローカル永続化）
 - `expo-store-review`（3回目の保存後にレビュー依頼を一度だけ出す。`review.js`）
 - 外部UIライブラリ・ナビゲーションライブラリは**使わない**
 
 > ⚠️ Expo はバージョンで API が大きく変わる。コードを書く前に必ず
-> https://docs.expo.dev/versions/v56.0.0/ の該当バージョンのドキュメントを確認すること。
+> https://docs.expo.dev/versions/v57.0.0/ の該当バージョンのドキュメントを確認すること。
 
 ---
 
