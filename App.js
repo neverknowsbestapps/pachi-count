@@ -653,6 +653,7 @@ export default function App() {
     setMachineName(item.machineName || '');
     setStoreName(item.storeName || '');
     setMachineNumber(item.machineNumber || '');
+    setMemo(item.memo || ''); // 元の記録を置き換えるのでメモも引き継ぐ
     setStartRotation(rotation);
     setEndRotation(''); // 空欄スタート（プレースホルダーに引き継ぎ回転数を表示）
     setStartTime(new Date());
