@@ -19,7 +19,7 @@
 | ストア | Google Play で公開中／App Store は審査承認済み・公開反映待ち（`RELEASE_CHECKLIST_IOS.md`） |
 | パッケージ名 | `com.neverknowsbestapps.pachicount` ※**変更不可** |
 | 公開中のバージョン | `versionCode: 7` / バージョン名 `1.0.0`（2026-08-01 公開）。**すでに広告入りのビルド**。<br>広告を足したあとも `app.json` の `version` を上げずにビルドしたため、バージョン名が 1.0.0 のまま |
-| 次のバージョン | バージョン名 `1.3.1`（準備中）。不具合修正＋全記録の書き出し・取り込み＋Expo SDK 57。項目は `RELEASE_CHECKLIST_IOS.md` の「バージョン 1.3.1」 |
+| 審査中のバージョン | バージョン名 `1.3.1`（2026-09-30 に両ストアへ審査送信）。不具合修正＋全記録の書き出し・取り込み＋Expo SDK 57。項目は `RELEASE_CHECKLIST_IOS.md` の「バージョン 1.3.1」 |
 | 公開済みの最新 | バージョン名 `1.3.0`（2026-09-28 に審査送信、両ストアとも公開済み。versionCode は EAS が自動採番）。改善ラウンド1：デザイン刷新＋ダークモード／レビュー依頼（3回目の保存で一度だけ）／初回起動の案内／見出し付きスクショ4枚と掲載文の更新 |
 | 前回のバージョン | `versionCode: 9` / `1.2.0`（2026-08-22 に審査送信）。UI のデザイン刷新＋新スクリーンショット |
 | プライバシーポリシー | https://neverknowsbestapps.github.io/pachicount-privacy/ （`neverknowsbestapps.github.io` リポジトリの `pachicount-privacy/index.html`）※**広告対応に改訂して公開済み（2026-07-31）** |
