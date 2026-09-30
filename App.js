@@ -11,6 +11,7 @@ import {
   Platform,
   ScrollView,
   Share as RNShare,
+  BackHandler,
   useColorScheme,
 } from 'react-native';
 import { useState, useEffect, useMemo, useRef, createContext, useContext } from 'react';
@@ -290,6 +291,26 @@ export default function App() {
     ballsUsed, endRotation, startTime, accumulatedRotations, accumulatedBalls,
     continueId,
   ]);
+
+  // Android の戻る操作を、各画面のヘッダーの「戻る」と同じ動きにする
+  // （ホームでは何もせず、通常どおりアプリを抜ける）
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (screen === SCREEN.HOME) return false;
+      if (screen === SCREEN.PLAYING) {
+        handleAbort(); // 中断の確認を出す
+      } else if (screen === SCREEN.RESET) {
+        setScreen(SCREEN.PLAYING);
+      } else if (screen === SCREEN.SETUP) {
+        resetForm();
+        setScreen(SCREEN.HOME);
+      } else {
+        setScreen(SCREEN.HOME);
+      }
+      return true;
+    });
+    return () => sub.remove();
+  }, [screen]);
 
   // 遊技中の途中経過を消す（保存・中断のとき）
   const clearPlaying = () => AsyncStorage.removeItem(PLAYING_KEY).catch(() => {});
