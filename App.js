@@ -242,6 +242,8 @@ export default function App() {
   const [accumulatedRotations, setAccumulatedRotations] = useState(0); // リセット前の累積回転数
   const [accumulatedBalls, setAccumulatedBalls] = useState(0);         // リセット前の累積使用玉数
   const [newResetRotation, setNewResetRotation] = useState('');        // リセット後の開始回転数入力
+  // 「続きから遊技」で始めたときの元の記録の id（保存時にその記録を置き換える）
+  const [continueId, setContinueId] = useState(null);
 
   // 初回起動の案内を出すか（null = まだ判定中）
   const [showOnboarding, setShowOnboarding] = useState(null);
@@ -278,11 +280,13 @@ export default function App() {
         startTime: startTime ? startTime.toISOString() : null,
         accumulatedRotations,
         accumulatedBalls,
+        continueId,
       })
     ).catch(() => {});
   }, [
     screen, machineName, storeName, machineNumber, startRotation, memo,
     ballsUsed, endRotation, startTime, accumulatedRotations, accumulatedBalls,
+    continueId,
   ]);
 
   // 遊技中の途中経過を消す（保存・中断のとき）
@@ -312,6 +316,7 @@ export default function App() {
       setStartTime(restoredStart && !isNaN(restoredStart.getTime()) ? restoredStart : null);
       setAccumulatedRotations(count(p.accumulatedRotations));
       setAccumulatedBalls(count(p.accumulatedBalls));
+      setContinueId(typeof p.continueId === 'string' ? p.continueId : null);
       setScreen(SCREEN.PLAYING);
     } catch (_) {
       // 読めない途中経過は無視してホームから始める
@@ -418,6 +423,7 @@ export default function App() {
     setAccumulatedRotations(0);
     setAccumulatedBalls(0);
     setNewResetRotation('');
+    setContinueId(null);
   };
 
   // 遊技スタート（setup → playing）
@@ -463,12 +469,17 @@ export default function App() {
     }
 
     const now = new Date();
+    const today = now.toLocaleDateString('ja-JP');
+    // 「続きから遊技」で始めた場合は元の記録を置き換える（同じ id のまま）
+    const original = continueId ? sessions.find((s) => s.id === continueId) : null;
+    const newStartTime = startTime
+      ? startTime.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
+      : '--';
     const newSession = {
-      id: Date.now().toString(),
-      date: now.toLocaleDateString('ja-JP'),
-      startTime: startTime
-        ? startTime.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
-        : '--',
+      id: original ? original.id : Date.now().toString(),
+      date: today,
+      // 同じ日の続きなら、元の記録の開始時刻を残す
+      startTime: original && original.date === today ? original.startTime : newStartTime,
       endTime: now.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }),
       machineName: machineName.trim(),
       storeName: storeName.trim(),
@@ -482,7 +493,10 @@ export default function App() {
     };
 
     try {
-      const updatedSessions = [newSession, ...sessions];
+      const updatedSessions = [
+        newSession,
+        ...sessions.filter((s) => s.id !== newSession.id),
+      ];
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updatedSessions));
       setSessions(updatedSessions);
       await saveNameHistory(machineName.trim(), storeName.trim());
@@ -644,6 +658,7 @@ export default function App() {
     setStartTime(new Date());
     setAccumulatedRotations(item.rotations);
     setAccumulatedBalls(item.ballsUsed);
+    setContinueId(item.id);
     setScreen(SCREEN.PLAYING);
   };
 
