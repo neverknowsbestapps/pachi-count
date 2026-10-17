@@ -9,14 +9,16 @@
   /* App Store のプロダクトページのヘッダ（21:9、3840×1646）と検索結果（3:2、2880×1920）。
      make-appstore-art.mjs が画面なしの Edge で写す。設定は URL の # に JSON で渡る。
      ヘッダ: 左半分に名前と一言、右半分に実際の画面。どちらもそれぞれの側の真ん中に置く。
-     検索結果: 名前はアイコンの横に出るので一言だけ。縦の画面は右、横の画面は下に置く */
+     検索結果: 名前はアイコンの横に出るので一言だけ。縦の画面は右、横の画面は下に置く。
+     字は中央揃え。画面と地の境目は frame で強める（none / border / device / plate / glow） */
   html, body { margin: 0; overflow: hidden; }
   .g { position: relative; overflow: hidden; font-family: "Noto Sans JP", "Yu Gothic UI", sans-serif; }
   .text { position: absolute; display: flex; flex-direction: column; justify-content: center; align-items: center; }
-  .inner { display: flex; flex-direction: column; }
+  .inner { display: flex; flex-direction: column; align-items: center; text-align: center; }
   .name { font-weight: 900; line-height: 1.1; white-space: nowrap; letter-spacing: 0.01em; }
   .tag { white-space: pre; }
   .shot { position: absolute; overflow: hidden; box-shadow: 0 40px 120px rgba(0, 0, 0, 0.35); }
+  .plate { position: absolute; }
   .shot img { position: absolute; left: 0; width: 100%; display: block; }
 
   .header { width: 3840px; height: 1646px; }
@@ -52,13 +54,29 @@ const W = c.kind === 'header' ? 3840 : 2880;
 const H = c.kind === 'header' ? 1646 : 1920;
 const landscape = c.screens.some((s) => s.landscape);
 
+// 画面と地の境目の見せ方。s は太さの倍率（検索結果は縮んで出るので太め）
+const SHADOW = '0 40px 120px rgba(0, 0, 0, 0.35)';
+const FRAMES = {
+  none: () => SHADOW,
+  // 白い縁で切り抜いたように見せる
+  border: (s) => `0 0 0 ${30 * s}px #ffffff, ${SHADOW}`,
+  // 黒い縁と細い明るい線で、端末に入っているように見せる
+  device: (s) => `0 0 0 ${46 * s}px #0c0e13, 0 0 0 ${54 * s}px #8a92a4, ${SHADOW}`,
+  // 画面のまわりをうっすら光らせる
+  glow: (s) => `0 0 0 ${10 * s}px rgba(255, 255, 255, 0.7), 0 0 ${240 * s}px ${70 * s}px rgba(255, 255, 255, 0.4)`,
+  // 画面の側の地を明るくする（板は下で敷く）
+  plate: () => SHADOW,
+};
+const frame = FRAMES[c.frame] ? c.frame : 'none';
+const fs = c.kind === 'search' ? 1.3 : 1;
+
 // 画面を置く。縦の画面は下へはみ出させ、上だけ切る（ステータスバーを落とす）
 function placeShots(boxes) {
   return c.screens.map((s, i) => {
     const b = boxes[i];
     const div = document.createElement('div');
     div.className = 'shot';
-    Object.assign(div.style, { left: b.x + 'px', top: b.y + 'px', width: b.w + 'px', height: b.h + 'px', borderRadius: b.r + 'px' });
+    Object.assign(div.style, { left: b.x + 'px', top: b.y + 'px', width: b.w + 'px', height: b.h + 'px', borderRadius: b.r + 'px', boxShadow: FRAMES[frame](fs) });
     const img = new Image();
     img.src = s.src;
     div.appendChild(img);
@@ -78,7 +96,7 @@ if (c.kind === 'header') {
     const w = 1760, h = Math.round(w / c.screens[0].aspect);
     boxes = [{ x: 2880 - w / 2, y: (H - h) / 2, w, h, r: 40 }];
   } else {
-    const n = c.screens.length, w = n === 1 ? 900 : 720, gap = 100;
+    const n = c.screens.length, w = n === 1 ? 1000 : 720, gap = 100;
     const total = n * w + (n - 1) * gap;
     boxes = c.screens.map((s, i) => ({ x: 2880 - total / 2 + i * (w + gap), y: 220, w, h: H, r: 64 }));
   }
@@ -90,6 +108,17 @@ if (c.kind === 'header') {
   const w = 960;
   boxes = [{ x: 2140 - w / 2, y: 200, w, h: H, r: 80 }];
   text = { x: 0, y: 0, w: 1560, h: H };
+}
+// plate のときは、画面の側（字の枠の外）の地を明るくする
+if (frame === 'plate') {
+  const p = document.createElement('div');
+  p.className = 'plate';
+  p.style.background = c.colors.plate || `color-mix(in srgb, ${c.colors.bg}, #ffffff 24%)`;
+  const box = landscape && c.kind === 'search'
+    ? { x: 0, y: text.h, w: W, h: H - text.h }
+    : { x: text.w, y: 0, w: W - text.w, h: H };
+  Object.assign(p.style, { left: box.x + 'px', top: box.y + 'px', width: box.w + 'px', height: box.h + 'px' });
+  g.appendChild(p);
 }
 const textEl = document.querySelector('.text');
 Object.assign(textEl.style, { left: text.x + 'px', top: text.y + 'px', width: text.w + 'px', height: text.h + 'px' });

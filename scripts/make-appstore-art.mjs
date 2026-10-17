@@ -7,7 +7,8 @@
 // 設定（パスはアプリの根から）:
 // {
 //   "out": "docs/store/assets",
-//   "colors": { "bg": "#13203b", "name": "#ffffff", "tag": "#8fc2ff" },
+//   "colors": { "bg": "#13203b", "name": "#ffffff", "tag": "#8fc2ff" },   // plate の色も足せる（無ければ地を 24% 明るく）
+//   "frame": "device",   // 画面と地の境目: none / border（白い縁）/ device（端末の縁）/ plate（画面の側の地を明るく）/ glow
 //   "langs": {
 //     "ja": {
 //       "name": "パチカウント",
@@ -75,7 +76,7 @@ for (const [lang, t] of Object.entries(config.langs)) {
   const made = {};
   for (const [kind, [w, h]] of Object.entries(sizes)) {
     const c = {
-      kind, lang, colors: config.colors, name: t.name, tag: t[kind],
+      kind, lang, colors: config.colors, frame: config.frame, name: t.name, tag: t[kind],
       screens: screens(kind === 'header' ? t.headerScreens : t.searchScreens),
     };
     const out = resolve(outDir, `${kind}-${lang}-${w}x${h}.png`);

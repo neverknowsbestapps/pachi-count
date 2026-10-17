@@ -1,16 +1,28 @@
 {
   "out": "assets/store/appstore",
-  "colors": { "bg": "#13203b", "name": "#ffffff", "tag": "#6fb4ff" },
+  "colors": {
+    "bg": "#13203b",
+    "name": "#ffffff",
+    "tag": "#6fb4ff"
+  },
+  "frame": "device",
   "langs": {
     "ja": {
       "name": "パチカウント",
       "header": "回転数を記録して\n回転率を自動計算",
       "search": "回転数を記録して\n回転率を自動計算",
       "headerScreens": [
-        { "src": "assets/store/raw/1.3.0/01-playing.png", "top": 0.045 },
-        { "src": "assets/store/raw/1.3.0/02-detail.png", "top": 0.045 }
+        {
+          "src": "assets/store/raw/1.3.0/01-playing.png",
+          "top": 0.045
+        }
       ],
-      "searchScreens": [{ "src": "assets/store/raw/1.3.0/01-playing.png", "top": 0.045 }]
+      "searchScreens": [
+        {
+          "src": "assets/store/raw/1.3.0/01-playing.png",
+          "top": 0.045
+        }
+      ]
     }
   }
 }
