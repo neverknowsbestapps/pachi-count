@@ -184,3 +184,15 @@ Google Play 用と App Store 用で、項目名も文字数の上限も違うの
 - 文章は審査向けに「遊技を推奨しない／18歳以上」の注意書きを入れてあります。
 - App Store のキーワードには、アプリ名・サブタイトルに入っている語を重複させない方がよい（すでに検索対象のため）。
 - 「アプリ名」はストアでの表示名。端末のホーム画面に出る名前（app.json の `name` ＝「パチカウント」）とは別物です。
+
+## App Store のヘッダと検索結果の画像（iOS 27 以降で表示・任意）
+
+2026-10-17 に作成。`node scripts/make-appstore-art.mjs scripts/appstore-art.json`（PowerShell で）で作り直せる。
+アセットライブラリ →「＋」→ クリエイティブアセットをアップロード → 審査に提出。通ったら公開中の版の
+「プロダクトページ情報」→「ヘッダと検索結果」→ Browse Assets で選んで公開する。版の更新は要らない。
+
+| 言語 | ヘッダ（21:9） | 検索結果（3:2） |
+| --- | --- | --- |
+| 日本語 | `assets/store/appstore/header-ja-3840x1646.png` | `assets/store/appstore/search-ja-2880x1920.png` |
+
+確認用（上げない）: `assets/store/appstore/appstore-check-<言語>.png`
