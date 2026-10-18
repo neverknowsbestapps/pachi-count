@@ -196,3 +196,5 @@ Google Play 用と App Store 用で、項目名も文字数の上限も違うの
 | 日本語 | `assets/store/appstore/header-ja-3840x1646.png` | `assets/store/appstore/search-ja-2880x1920.png` |
 
 確認用（上げない）: `assets/store/appstore/appstore-check-<言語>.png`
+
+2026-10-18 確認：アセットライブラリで 2 枚とも「承認済み」。公開中の 1.3.1 の「ヘッダと検索結果」には、ヘッダ・検索結果とも 1／1 でこの 2 枚がすでに入っていて、再読み込みしても残り、選び直す画像は残っていなかった（Browse Assets の候補は 0 件）。こちらでの操作・公開ボタンは不要だった。
