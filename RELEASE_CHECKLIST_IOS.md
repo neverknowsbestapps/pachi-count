@@ -212,10 +212,14 @@ npx eas-cli submit --platform ios --latest
 - [x] 🔴 `app.json` の `version` を 1.3.2 に変更（ビルド番号は EAS が自動採番）
 - [x] 🔴 Web 版と Expo Go で一連の操作を確認（2026-10-18）
 - [x] 🔴 スクリーンショット4枚を作り直す（Web 版で撮った `assets/store/raw/1.3.2/` → `assets/store/1.3.2/`。並びと見出しは 1.3.0 と同じ）
-- [ ] 🔴 `eas build --platform all --profile production` → iOS は `eas submit -p ios --profile production --latest`、Android は AAB を手でアップロード
-- [ ] 🔴 App Store Connect でバージョン 1.3.2 を作成、ビルドを選び、最新情報を記入、スクショを差し替え
-- [ ] 🔴 プロモーションテキストが空になっていないか確認（空なら `STORE_LISTING.md` の文面を入れ直す）
-- [ ] 🔴 両ストアとも審査に提出
+- [x] 🔴 `eas build --platform all --profile production` → iOS は `eas submit -p ios --profile production --latest`（ビルド 11）、Android は AAB を手でアップロード（12）
+- [x] 🔴 App Store Connect でバージョン 1.3.2 を作成、ビルドを選び、最新情報を記入、スクショを差し替え。
+      **必須の枠が「Dynamic Island 搭載 iPhone（中型）」＝6.1/6.3 インチになっていた**ので 1206x2622（`ios-6.3/`）を新しく作って入れ、
+      大型（6.5）の枠も古い4枚を消して新しい4枚に。メディアマネージャーの「すべて削除」は1回目が効かなかったので、枚数を必ず確かめる
+- [x] 🔴 プロモーションテキストが空になっていないか確認 → 今回も空だったので `STORE_LISTING.md` の文面を入れ直した
+- [x] 🔴 **2026-10-18、両ストアとも審査に提出**（Play はリリースとスクショ差し替えの2件をまとめて送信。
+      スクショは「未公開として保存」だけでは公開の概要に載らず、「次へ」→ AI アセットの申告「ラベルを付けない」→「保存」で載った）
+- [ ] 🔴 審査結果を確認し、公開されたら両ストアのページでスクショと版を確認
 
 ---
 

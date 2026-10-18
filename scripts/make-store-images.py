@@ -11,6 +11,7 @@
   play/     1350x2400（9:16。Play が勧める比率。1080x1920 以上の条件も満たす）
   ios-6.7/  1290x2796（iPhone 6.7 インチ。App Store で必須）
   ios-6.5/  1284x2778（iPhone 6.5 インチ）
+  ios-6.3/  1206x2622（iPhone 6.3 インチ。2026-10 から App Store Connect で必須の枠になった）
   sheet-<ストア>.png は確認用に横に並べたもの（ストアには出さない）
 
 見出しと元ファイルは下の SHOTS。並び順がストアでの表示順。
@@ -43,6 +44,7 @@ SIZES = {
     "play": (1350, 2400),
     "ios-6.7": (1290, 2796),
     "ios-6.5": (1284, 2778),
+    "ios-6.3": (1206, 2622),
 }
 
 FONT = Path(r"C:\Windows\Fonts\NotoSansJP-VF.ttf")
