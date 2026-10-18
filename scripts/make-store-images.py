@@ -27,7 +27,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = "1.3.0"
+VERSION = "1.3.2"
 
 # 見出しは1行。長ければ字が自動で縮む。
 # crop は素の高さに対する割合で [上, 下]。上はステータスバー（時計など）を切るため、
@@ -35,7 +35,7 @@ VERSION = "1.3.0"
 SHOTS = [
     ("01-playing.png", "01-playing.png", "1タップで回転数を記録", None),
     ("02-detail.png", "02-detail.png", "回転率を自動計算", None),
-    ("03-home.png", "03-home.png", "記録は一覧で管理・共有", [0.0, 0.825]),
+    ("03-home.png", "03-home.png", "記録は一覧で管理・共有", None),
     ("04-settings.png", "04-settings.png", "ボタンの数値は自由に設定", None),
 ]
 
