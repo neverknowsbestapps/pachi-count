@@ -52,7 +52,7 @@
       }
     },
     "experiments": {
-      "baseUrl": "/rotation-counter"
+      "baseUrl": "/pachi-count"
     }
   }
 }

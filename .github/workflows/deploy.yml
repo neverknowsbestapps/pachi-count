@@ -25,7 +25,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # app.json の experiments.baseUrl (/rotation-counter) を反映して web 書き出し
+      # app.json の experiments.baseUrl (/pachi-count) を反映して web 書き出し
       - run: npx expo export --platform web
       - uses: actions/upload-pages-artifact@v3
         with:
