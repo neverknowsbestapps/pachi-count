@@ -10,6 +10,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Modal,
+  Image,
+  Linking,
+  Animated,
+  Easing,
   Share as RNShare,
   BackHandler,
   useColorScheme,
@@ -22,6 +27,8 @@ import { Inter_700Bold } from '@expo-google-fonts/inter/700Bold';
 
 import { initAds, AdBanner } from './ads';
 import { noteSessionSavedAndMaybeRequestReview } from './review';
+import { LICENSES } from './licenses';
+import appConfig from './app.json';
 
 // --- Web 対応シム ---
 // react-native-web には Alert / Share が無いため、Web では
@@ -75,8 +82,32 @@ const Share = IS_WEB ? { share: webShare } : RNShare;
 const STORAGE_KEY = '@rotation_sessions_v3';
 const SETTINGS_KEY = '@rotation_settings_v1';
 const NAMES_KEY = '@rotation_names_v1';
-const ONBOARDING_KEY = '@rotation_onboarding_v1'; // 初回案内を表示済みなら '1'
 const PLAYING_KEY = '@rotation_playing_v1'; // 遊技中の途中経過（保存・中断したら消す）
+
+// アプリの版（設定 → このアプリについて）
+const APP_VERSION = appConfig.expo.version;
+
+// プライバシーポリシー（ストアの規約で、アプリの中からも開けるようにする）
+const PRIVACY_POLICY_URL = 'https://neverknowsbestapps.github.io/pachicount-privacy/';
+
+// 姉妹アプリ「パチマネージャー」（収支の記録）。端末に合わせてストアを開く
+const PACHIMANAGER_ICON = require('./assets/pachimanager.png');
+const PACHIMANAGER_APP_STORE = 'https://apps.apple.com/jp/app/id6799350017';
+const PACHIMANAGER_PLAY = 'https://play.google.com/store/apps/details?id=neverknowsbestapps.pachimanager';
+const pachimanagerUrl = () => {
+  if (Platform.OS === 'ios') return PACHIMANAGER_APP_STORE;
+  if (IS_WEB && /iPhone|iPad|iPod/.test(navigator.userAgent)) return PACHIMANAGER_APP_STORE;
+  return PACHIMANAGER_PLAY;
+};
+
+// 外のページ（ブラウザ・ストア）を開く
+const openUrl = async (url) => {
+  try {
+    await Linking.openURL(url);
+  } catch (_) {
+    Alert.alert('エラー', 'ページを開けませんでした');
+  }
+};
 
 // 設定のデフォルト値
 const DEFAULT_SETTINGS = {
@@ -96,12 +127,15 @@ const THEME_OPTIONS = [
 // 画面の識別子（タイプミス防止のため定数化）
 const SCREEN = {
   HOME: 'home',
-  SETUP: 'setup',
   PLAYING: 'playing',
   RESET: 'reset',
   SETTINGS: 'settings',
   DETAIL: 'detail',
   EDIT: 'edit',
+  DATA: 'data',         // 設定 → データ管理
+  ABOUT: 'about',       // 設定 → このアプリについて
+  LICENSES: 'licenses', // このアプリについて → ライセンス一覧
+  LICENSE: 'license',   // ライセンス一覧 → 1件の全文
 };
 
 // カラーパレット（色はすべてここで一元管理する）
@@ -124,6 +158,7 @@ const THEMES = {
     danger: '#E5484D',         // 削除など危険な操作の赤
     dangerTint: '#FDECEC',     // 赤の薄い地
     onPrimary: '#FFFFFF',      // 青の上の文字
+    scrim: 'rgba(17,24,39,0.35)', // 下から出る欄の後ろを暗くする幕
     shadow: true,              // 面の高さを影で出すか
   },
   dark: {
@@ -143,6 +178,7 @@ const THEMES = {
     danger: '#FF6B6B',
     dangerTint: '#3A1F24',
     onPrimary: '#FFFFFF',
+    scrim: 'rgba(0,0,0,0.55)',
     shadow: false,
   },
 };
@@ -172,6 +208,23 @@ const TYPE_SIZE = {
   liveRate: 52,
 };
 
+// 下のタブの遊技開始の丸：外側の縁の太さと、タブから上へはみ出す量
+const TAB_START_RING = 5;
+const TAB_START_LIFT = 35;
+// 記録が0件のときに丸から広がる波紋：何倍まで広げるか・何ミリ秒に1回か
+// 1回のうち、はじめの TAB_RIPPLE_SPREAD の割合で広がって消え、残りは何も出さない
+const TAB_RIPPLE_SCALE = 1.8;
+const TAB_RIPPLE_DURATION = 4000;
+const TAB_RIPPLE_SPREAD = 0.35;
+// 波紋が広告に重ならない高さ（丸の中心はタブの上端から 2 下。半径 32 × 倍率 ＋ 輪の太さ ＋ 余裕）
+const TAB_RIPPLE_SPACER = Math.ceil(32 * TAB_RIPPLE_SCALE - 2 + 3 + 4);
+// Web は動きを端末側に任せる仕組み（useNativeDriver）が使えない
+const USE_NATIVE_DRIVER = Platform.OS !== 'web';
+// 波紋の動き。0→1 を繰り返す値に対し、広がる間の位置（入力）と広がり具合（0→1）を並べる
+// 速く広がり始めて、ゆっくり消える形にするため、途中に点を置いている
+const RIPPLE_INPUT = [0, 0.25, 0.5, 0.75, 1].map((t) => t * TAB_RIPPLE_SPREAD).concat(1);
+const RIPPLE_PROGRESS = [0, 0.25, 0.5, 0.75, 1].map((t) => 1 - (1 - t) * (1 - t)).concat(1);
+
 const RADIUS = {
   control: 14,
   surface: 20,
@@ -199,10 +252,11 @@ export default function App() {
   const [draftRateBalls, setDraftRateBalls] = useState('250');
   const [draftBallButtons, setDraftBallButtons] = useState(['125', '250', '1000']);
   const [draftRotationButtons, setDraftRotationButtons] = useState(['1', '10', '100']);
-  const [draftTheme, setDraftTheme] = useState('auto');
   // 記録の取り込み（設定画面）。貼り付け欄はボタンを押してから出す
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState('');
+  // ライセンス一覧で選んだ部品（LICENSES の何番目か）
+  const [licenseIndex, setLicenseIndex] = useState(0);
 
   // 表示モード。設定が「自動」なら端末の設定に従う
   const systemScheme = useColorScheme();
@@ -229,10 +283,8 @@ export default function App() {
   // 機種名・店舗名の入力履歴
   const [machineNameHistory, setMachineNameHistory] = useState([]);
   const [storeNameHistory, setStoreNameHistory] = useState([]);
-  const [showMachineSuggestions, setShowMachineSuggestions] = useState(false);
-  const [showStoreSuggestions, setShowStoreSuggestions] = useState(false);
 
-  // 台情報入力（setup画面）
+  // 台情報（遊技中に台情報の欄で入れる）
   const [machineName, setMachineName] = useState('');
   const [storeName, setStoreName] = useState('');
   const [machineNumber, setMachineNumber] = useState('');
@@ -243,6 +295,10 @@ export default function App() {
   const [ballsUsed, setBallsUsed] = useState('');
   const [endRotation, setEndRotation] = useState(''); // 終了時の台の回転数（台の表示値）
   const [startTime, setStartTime] = useState(null);
+  // 開始時の回転数を入力中か（遊技中画面の上の欄を入力欄にする）
+  const [editingStart, setEditingStart] = useState(false);
+  // 台情報の欄（遊技中に機種名の行を押すと下から出る）
+  const [showInfoSheet, setShowInfoSheet] = useState(false);
 
   // リセット関連
   const [accumulatedRotations, setAccumulatedRotations] = useState(0); // リセット前の累積回転数
@@ -251,28 +307,28 @@ export default function App() {
   // 「続きから遊技」で始めたときの元の記録の id（保存時にその記録を置き換える）
   const [continueId, setContinueId] = useState(null);
 
-  // 初回起動の案内を出すか（null = まだ判定中）
-  const [showOnboarding, setShowOnboarding] = useState(null);
-
   // アプリ起動時にデータ・設定・履歴を読み込む
   useEffect(() => {
     loadSettings();
     loadNames();
     // 広告の下準備。使えない環境（Expo Go / ブラウザ）では何も起きない
     initAds();
-    // 記録を読み込んでから、初回案内を出すか決める
     (async () => {
-      const loaded = await loadSessions();
-      await decideOnboarding(loaded);
+      await loadSessions();
+      // 遊技の途中でアプリが終了されていたら、遊技中画面へ戻す
+      await restorePlaying();
     })();
-    // 遊技の途中でアプリが終了されていたら、遊技中画面へ戻す
-    restorePlaying();
   }, []);
 
   // 遊技中の値が変わるたびに途中経過を書き出す
   // （OS にアプリを終了されても、次の起動で続きから再開できるようにする）
   useEffect(() => {
     if (screen !== SCREEN.PLAYING && screen !== SCREEN.RESET) return;
+    // 何も入れていない遊技は残さない（開いてすぐ閉じたときに、次の起動で戻ってこないように）
+    if (isPlayingEmpty()) {
+      clearPlaying();
+      return;
+    }
     AsyncStorage.setItem(
       PLAYING_KEY,
       JSON.stringify({
@@ -304,9 +360,12 @@ export default function App() {
         handleAbort(); // 中断の確認を出す
       } else if (screen === SCREEN.RESET) {
         setScreen(SCREEN.PLAYING);
-      } else if (screen === SCREEN.SETUP) {
-        resetForm();
-        setScreen(SCREEN.HOME);
+      } else if (screen === SCREEN.DATA || screen === SCREEN.ABOUT) {
+        setScreen(SCREEN.SETTINGS);
+      } else if (screen === SCREEN.LICENSES) {
+        setScreen(SCREEN.ABOUT);
+      } else if (screen === SCREEN.LICENSE) {
+        setScreen(SCREEN.LICENSES);
       } else {
         setScreen(SCREEN.HOME);
       }
@@ -318,18 +377,18 @@ export default function App() {
   // 遊技中の途中経過を消す（保存・中断のとき）
   const clearPlaying = () => AsyncStorage.removeItem(PLAYING_KEY).catch(() => {});
 
-  // 途中経過が残っていれば読み込んで遊技中画面へ復帰する
+  // 途中経過が残っていれば読み込んで遊技中画面へ復帰する（復帰したら true を返す）
+  // 開始時の回転数がまだ入っていなくても戻す（遊技中画面で入力を続けられる）
   const restorePlaying = async () => {
     try {
       const data = await AsyncStorage.getItem(PLAYING_KEY);
-      if (data === null) return;
+      if (data === null) return false;
       const p = JSON.parse(data);
       const text = (v) => (typeof v === 'string' ? v : '');
       const count = (v) => (typeof v === 'number' && isFinite(v) && v >= 0 ? v : 0);
-      // 開始回転数がなければ再開できないので捨てる
-      if (!p || isNaN(parseInt(p.startRotation, 10))) {
+      if (!p || typeof p !== 'object') {
         clearPlaying();
-        return;
+        return false;
       }
       const restoredStart = p.startTime ? new Date(p.startTime) : null;
       setMachineName(text(p.machineName));
@@ -343,38 +402,13 @@ export default function App() {
       setAccumulatedRotations(count(p.accumulatedRotations));
       setAccumulatedBalls(count(p.accumulatedBalls));
       setContinueId(typeof p.continueId === 'string' ? p.continueId : null);
+      setEditingStart(isNaN(parseInt(p.startRotation, 10)));
       setScreen(SCREEN.PLAYING);
+      return true;
     } catch (_) {
       // 読めない途中経過は無視してホームから始める
+      return false;
     }
-  };
-
-  // 初回案内は「表示済みフラグがなく、記録も1件もない」ときだけ出す。
-  // アップデートで初めてこの判定を通る既存ユーザーは記録があるので出さない。
-  const decideOnboarding = async (loadedSessions) => {
-    try {
-      const seen = await AsyncStorage.getItem(ONBOARDING_KEY);
-      if (seen !== null) {
-        setShowOnboarding(false);
-        return;
-      }
-      if (loadedSessions.length > 0) {
-        await AsyncStorage.setItem(ONBOARDING_KEY, '1');
-        setShowOnboarding(false);
-        return;
-      }
-      setShowOnboarding(true);
-    } catch (_) {
-      setShowOnboarding(false);
-    }
-  };
-
-  // 初回案内を閉じる（二度と出さない）
-  const handleFinishOnboarding = async () => {
-    setShowOnboarding(false);
-    try {
-      await AsyncStorage.setItem(ONBOARDING_KEY, '1');
-    } catch (_) {}
   };
 
   // AsyncStorageから設定を読み込む
@@ -421,7 +455,6 @@ export default function App() {
   };
 
   // AsyncStorageからデータを読み込む
-  // 読み込んだ配列を返す（起動時の初回案内の判定に使う）
   const loadSessions = async () => {
     try {
       const data = await AsyncStorage.getItem(STORAGE_KEY);
@@ -468,39 +501,50 @@ export default function App() {
     setAccumulatedBalls(0);
     setNewResetRotation('');
     setContinueId(null);
+    setEditingStart(false);
+    setShowInfoSheet(false);
   };
 
-  // 遊技スタート（setup → playing）
-  const handleStartSession = () => {
-    if (!startRotation.trim() || isNaN(Number(startRotation))) {
-      Alert.alert('入力エラー', '開始時の回転数を入力してください');
-      return;
-    }
-    setShowMachineSuggestions(false);
-    setShowStoreSuggestions(false);
+  // 遊技スタート（home → playing）。開始時の回転数は遊技中画面の上の欄で入れる
+  const startNewSession = () => {
+    resetForm();
     setStartTime(new Date());
-    setBallsUsed('');
-    setEndRotation(''); // 空欄スタート（プレースホルダーに開始回転数を表示）
+    setEditingStart(true);
     setScreen(SCREEN.PLAYING);
   };
 
-  // 遊技終了・保存（playing → home）
-  const handleEndSession = async () => {
+  // 遊技中に何も入力していないか（中断の確認を省く・途中経過を残さない判定に使う）
+  const isPlayingEmpty = () =>
+    !startRotation.trim() && !endRotation.trim() && !ballsUsed.trim() &&
+    accumulatedRotations === 0 && accumulatedBalls === 0 && !continueId &&
+    !machineName.trim() && !storeName.trim() && !machineNumber.trim() && !memo.trim();
+
+  // 開始時の回転数の入力を終える（数字が入っていれば回転率の表示に戻す）
+  const commitStartRotation = () => {
+    if (!isNaN(parseInt(startRotation, 10))) setEditingStart(false);
+  };
+
+  // 保存できる値がそろっているか確かめる。そろっていれば数値をまとめて返し、だめなら警告して null
+  const validatePlaying = () => {
     const ballsNum = parseInt(ballsUsed, 10);
     const endRotationNum = parseInt(endRotation, 10);
     const startRotationNum = parseInt(startRotation, 10);
 
+    if (isNaN(startRotationNum)) {
+      Alert.alert('入力エラー', '開始時の回転数を入力してください');
+      return null;
+    }
     if (!ballsUsed.trim() || isNaN(ballsNum) || ballsNum <= 0) {
       Alert.alert('入力エラー', '使用玉数を入力してください');
-      return;
+      return null;
     }
     if (!endRotation.trim() || isNaN(endRotationNum)) {
       Alert.alert('入力エラー', '現在の回転数を入力してください');
-      return;
+      return null;
     }
     if (endRotationNum < startRotationNum) {
       Alert.alert('入力エラー', '現在の回転数は開始時の値より大きい値を入力してください');
-      return;
+      return null;
     }
 
     // 合計回転数・合計玉数（累積 + 現セグメント）
@@ -509,8 +553,16 @@ export default function App() {
 
     if (rotationsNum <= 0) {
       Alert.alert('入力エラー', '回転数が0回です。回転していない場合は中断してください');
-      return;
+      return null;
     }
+    return { startRotationNum, endRotationNum, rotationsNum, totalBallsNum };
+  };
+
+  // 遊技終了・保存（playing → home）
+  const handleEndSession = async () => {
+    const values = validatePlaying();
+    if (values === null) return;
+    const { startRotationNum, endRotationNum, rotationsNum, totalBallsNum } = values;
 
     const base = await getSessionsForWrite();
     if (base === null) return;
@@ -562,39 +614,64 @@ export default function App() {
     setDraftRateBalls(String(settings.rateBalls));
     setDraftBallButtons(settings.ballButtons.map(String));
     setDraftRotationButtons(settings.rotationButtons.map(String));
-    setDraftTheme(settings.theme || 'auto');
     setShowImport(false);
     setImportText('');
     setScreen(SCREEN.SETTINGS);
   };
 
-  // 設定を保存する
-  const handleSaveSettings = async () => {
-    const rateBalls = parseInt(draftRateBalls, 10);
-    const ballButtons = draftBallButtons.map((v) => parseInt(v, 10));
-    const rotationButtons = draftRotationButtons.map((v) => parseInt(v, 10));
-
-    if (isNaN(rateBalls) || rateBalls <= 0) {
-      Alert.alert('入力エラー', '基準玉数を正しく入力してください');
-      return;
-    }
-    if (ballButtons.some((v) => isNaN(v) || v <= 0)) {
-      Alert.alert('入力エラー', '使用玉数ボタンの値を正しく入力してください');
-      return;
-    }
-    if (rotationButtons.some((v) => isNaN(v) || v <= 0)) {
-      Alert.alert('入力エラー', '回転数ボタンの値を正しく入力してください');
-      return;
-    }
-
-    const newSettings = { rateBalls, ballButtons, rotationButtons, theme: draftTheme };
+  // 設定を書き込む（変えたらその場で保存する）
+  const saveSettings = async (next) => {
     try {
-      await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(newSettings));
-      setSettings(newSettings);
-      setScreen(SCREEN.HOME);
+      await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+      setSettings(next);
     } catch (_) {
       Alert.alert('エラー', '設定の保存に失敗しました');
     }
+  };
+
+  // 基準玉数・ボタンの値を確かめて保存する（入力欄を離れたとき）
+  // 正しくない値なら警告して、保存済みの値に戻す
+  const commitNumberSettings = () => {
+    const rateBalls = parseInt(draftRateBalls, 10);
+    const ballButtons = draftBallButtons.map((v) => parseInt(v, 10));
+    const rotationButtons = draftRotationButtons.map((v) => parseInt(v, 10));
+    const bad = (v) => isNaN(v) || v <= 0;
+    if (bad(rateBalls) || ballButtons.some(bad) || rotationButtons.some(bad)) {
+      Alert.alert('入力エラー', '1以上の数字を入力してください');
+      setDraftRateBalls(String(settings.rateBalls));
+      setDraftBallButtons(settings.ballButtons.map(String));
+      setDraftRotationButtons(settings.rotationButtons.map(String));
+      return;
+    }
+    const same =
+      rateBalls === settings.rateBalls &&
+      ballButtons.every((v, i) => v === settings.ballButtons[i]) &&
+      rotationButtons.every((v, i) => v === settings.rotationButtons[i]);
+    if (same) return;
+    saveSettings({ ...settings, rateBalls, ballButtons, rotationButtons });
+  };
+
+  // 表示モードを切り替える
+  const handleChangeTheme = (theme) => saveSettings({ ...settings, theme });
+
+  // 基準玉数・ボタンを初期値に戻す（表示モードはそのまま）
+  const handleResetSettings = () => {
+    Alert.alert(
+      '初期値に戻しますか？',
+      '基準玉数とボタンの値が初期値に戻ります',
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: '戻す',
+          onPress: () => {
+            setDraftRateBalls(String(DEFAULT_SETTINGS.rateBalls));
+            setDraftBallButtons(DEFAULT_SETTINGS.ballButtons.map(String));
+            setDraftRotationButtons(DEFAULT_SETTINGS.rotationButtons.map(String));
+            saveSettings({ ...DEFAULT_SETTINGS, theme: settings.theme });
+          },
+        },
+      ]
+    );
   };
 
   // 編集画面を開く（日付・時刻を分割してドラフトにセット）
@@ -898,6 +975,13 @@ export default function App() {
 
   // 中断（保存しないで戻る）
   const handleAbort = () => {
+    // 何も入れていなければ、確認せずにホームへ戻る
+    if (isPlayingEmpty()) {
+      clearPlaying();
+      resetForm();
+      setScreen(SCREEN.HOME);
+      return;
+    }
     Alert.alert(
       '遊技を中断しますか？',
       'この遊技のデータは保存されません',
@@ -962,6 +1046,7 @@ export default function App() {
     setEndRotation(''); // 空欄スタート（プレースホルダーにリセット後の回転数を表示）
     setBallsUsed('0');
     setNewResetRotation('');
+    setEditingStart(false);
     setScreen(SCREEN.PLAYING);
   };
 
@@ -997,81 +1082,16 @@ export default function App() {
     return '--';
   };
 
-  // 入力履歴の候補リストを表示する（機種名・店舗名で共通利用）
-  // visible: 表示フラグ / history: 履歴配列 / value: 現在の入力値
-  // onSelect: 候補選択時の処理 / onClose: リストを閉じる処理
-  const renderSuggestions = (visible, history, value, onSelect, onClose) => {
-    if (!visible) return null;
-    const matches = history.filter((n) =>
-      n.toLowerCase().includes(value.toLowerCase())
-    );
-    if (matches.length === 0) return null;
-    return (
-      <View style={styles.suggestionsContainer}>
-        {matches.map((name, i) => (
-          <TouchableOpacity
-            key={i}
-            style={styles.suggestionItem}
-            activeOpacity={BUTTON_ACTIVE_OPACITY}
-            onPress={() => { onSelect(name); onClose(); }}
-          >
-            <Text style={styles.suggestionText}>{name}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    );
-  };
-
   // ========================================
   // ホーム画面
   // ========================================
   if (!fontsLoaded) return null;
 
-  // ========================================
-  // 初回起動の案内（1画面・一度だけ）
-  // ========================================
-  if (showOnboarding && screen === SCREEN.HOME) {
-    const steps = [
-      { n: '1', text: '台の回転数を入力して遊技開始' },
-      { n: '2', text: '使った玉数と回転数を入れると回転率を計算' },
-      { n: '3', text: '保存すると記録が一覧に並ぶ' },
-    ];
-    return withTheme(
-      <View style={styles.container}>
-        <StatusBar style={statusBarStyle} />
-        <View style={styles.onboardingBody}>
-          <Text style={styles.onboardingTitle}>パチカウント</Text>
-          <Text style={styles.onboardingSubtitle}>パチンコの回転数と回転率を記録するアプリ</Text>
-          <View style={styles.onboardingCard}>
-            {steps.map((step, i) => (
-              <View
-                key={step.n}
-                style={[styles.onboardingStep, i < steps.length - 1 && styles.onboardingStepBorder]}
-              >
-                <View style={styles.onboardingBadge}>
-                  <Text style={styles.onboardingBadgeText}>{step.n}</Text>
-                </View>
-                <Text style={styles.onboardingStepText}>{step.text}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-        <View style={styles.homeFooter}>
-          <AppButton label="はじめる" onPress={handleFinishOnboarding} />
-        </View>
-      </View>
-    );
-  }
-
   if (screen === SCREEN.HOME) {
     return withTheme(
       <View style={styles.container}>
         <StatusBar style={statusBarStyle} />
-        <ScreenHeader
-          title="パチカウント"
-          rightLabel="設定"
-          onRightPress={handleOpenSettings}
-        />
+        <ScreenHeader title="記録一覧" />
 
         {sessions.length === 0 ? (
           // 記録がない場合
@@ -1132,111 +1152,20 @@ export default function App() {
           />
         )}
 
-        {/* バナー広告（記録一覧の下・遊技開始ボタンの上） */}
+        {/* バナー広告（記録一覧の下・タブの上） */}
         <AdBanner
           borderColor={colors.divider}
           backgroundColor={colors.background}
           textColor={colors.textGray}
         />
-
-        {/* 遊技開始ボタン（端末下部の操作バーと重ならないよう余白を確保） */}
-        <View style={styles.homeFooter}>
-          <AppButton label="遊技開始" onPress={() => setScreen(SCREEN.SETUP)} />
-        </View>
-      </View>
-    );
-  }
-
-  // ========================================
-  // 台情報入力画面（setup）
-  // ========================================
-  if (screen === SCREEN.SETUP) {
-    return withTheme(
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        <StatusBar style={statusBarStyle} />
-        <ScreenHeader
-          title="台情報を入力"
-          leftLabel="戻る"
-          onLeftPress={() => { resetForm(); setScreen(SCREEN.HOME); }}
+        <TabBar
+          active="records"
+          onRecords={() => {}}
+          onStart={startNewSession}
+          onSettings={handleOpenSettings}
+          highlight={sessions.length === 0}
         />
-        <ScrollView showsVerticalScrollIndicator={false}>
-          {/* 開始時の回転数（必須・最上部で目立たせる） */}
-          <View style={styles.startRotationBlock}>
-            <Text style={styles.startRotationLabel}>
-              開始時の回転数 <Text style={styles.required}>必須</Text>
-            </Text>
-            <TextInput
-              style={styles.inputLarge}
-              value={startRotation}
-              onChangeText={setStartRotation}
-              keyboardType="numeric"
-              maxLength={7}
-              returnKeyType="done"
-            />
-          </View>
-
-          {/* 機種名（任意）+ 履歴候補 */}
-          <Text style={styles.label}>機種名</Text>
-          <TextInput
-            style={styles.input}
-            value={machineName}
-            onChangeText={(text) => { setMachineName(text); setShowMachineSuggestions(true); }}
-            onFocus={() => setShowMachineSuggestions(true)}
-            onBlur={() => setTimeout(() => setShowMachineSuggestions(false), 200)}
-            maxLength={50}
-            returnKeyType="next"
-          />
-          {renderSuggestions(
-            showMachineSuggestions, machineNameHistory, machineName,
-            setMachineName, () => setShowMachineSuggestions(false)
-          )}
-
-          {/* 店舗名（任意）+ 履歴候補 */}
-          <Text style={styles.label}>店舗名</Text>
-          <TextInput
-            style={styles.input}
-            value={storeName}
-            onChangeText={(text) => { setStoreName(text); setShowStoreSuggestions(true); }}
-            onFocus={() => setShowStoreSuggestions(true)}
-            onBlur={() => setTimeout(() => setShowStoreSuggestions(false), 200)}
-            maxLength={50}
-            returnKeyType="next"
-          />
-          {renderSuggestions(
-            showStoreSuggestions, storeNameHistory, storeName,
-            setStoreName, () => setShowStoreSuggestions(false)
-          )}
-
-          {/* 台番号（任意） */}
-          <Text style={styles.label}>台番号</Text>
-          <TextInput
-            style={[styles.input, styles.numberMedium]}
-            value={machineNumber}
-            onChangeText={setMachineNumber}
-            keyboardType="numeric"
-            maxLength={5}
-            returnKeyType="next"
-          />
-
-          {/* メモ（任意・200文字以内） */}
-          <Text style={styles.label}>メモ</Text>
-          <TextInput
-            style={styles.memoInput}
-            value={memo}
-            onChangeText={setMemo}
-            multiline
-            maxLength={200}
-            textAlignVertical="top"
-          />
-          <Text style={styles.memoCounter}>{memo.length} / 200</Text>
-
-          {/* 遊技スタートボタン */}
-          <AppButton label="遊技開始" onPress={handleStartSession} />
-        </ScrollView>
-      </KeyboardAvoidingView>
+      </View>
     );
   }
 
@@ -1457,9 +1386,138 @@ export default function App() {
   }
 
   // ========================================
-  // 設定画面（settings）
+  // 設定画面（settings・下のタブ）
+  // 変えたらその場で保存する。数字は入力欄を離れたときに確かめて保存
   // ========================================
   if (screen === SCREEN.SETTINGS) {
+    const renderNumInput = (value, onChange, small) => (
+      <TextInput
+        style={[styles.settingsNumInput, small && styles.settingsNumInputSmall]}
+        value={value}
+        onChangeText={onChange}
+        onBlur={commitNumberSettings}
+        keyboardType="numeric"
+        returnKeyType="done"
+        maxLength={5}
+        selectTextOnFocus={true}
+      />
+    );
+    const renderButtonInputs = (values, setValues) => (
+      <View style={styles.settingsNums}>
+        {values.map((val, i) => (
+          <View key={i}>
+            {renderNumInput(val, (text) => {
+              const next = [...values];
+              next[i] = text;
+              setValues(next);
+            }, true)}
+          </View>
+        ))}
+      </View>
+    );
+    return withTheme(
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <StatusBar style={statusBarStyle} />
+        <ScreenHeader title="設定" />
+        <ScrollView
+          style={styles.settingsScroll}
+          contentContainerStyle={styles.settingsScrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={[styles.settingsSection, styles.settingsSectionFirst]}>回転率</Text>
+          <View style={styles.settingsGroup}>
+            <View style={styles.settingsItem}>
+              <Text style={styles.settingsItemText}>基準玉数</Text>
+              {renderNumInput(draftRateBalls, setDraftRateBalls)}
+            </View>
+          </View>
+
+          <Text style={styles.settingsSection}>ボタン</Text>
+          <View style={styles.settingsGroup}>
+            <View style={styles.settingsItem}>
+              <Text style={styles.settingsItemText}>回転数</Text>
+              {renderButtonInputs(draftRotationButtons, setDraftRotationButtons)}
+            </View>
+            <View style={[styles.settingsItem, styles.settingsItemBorder]}>
+              <Text style={styles.settingsItemText}>使用玉数</Text>
+              {renderButtonInputs(draftBallButtons, setDraftBallButtons)}
+            </View>
+            <TouchableOpacity
+              style={[styles.settingsItem, styles.settingsItemBorder]}
+              activeOpacity={BUTTON_ACTIVE_OPACITY}
+              onPress={handleResetSettings}
+            >
+              <Text style={[styles.settingsItemText, styles.settingsItemMuted]}>初期値に戻す</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.settingsSection}>表示</Text>
+          <View style={styles.settingsGroup}>
+            <View style={styles.settingsItem}>
+              <Text style={styles.settingsItemText}>テーマ</Text>
+              <View style={styles.segmentSmall}>
+                {THEME_OPTIONS.map((opt) => {
+                  const active = (settings.theme || 'auto') === opt.value;
+                  return (
+                    <TouchableOpacity
+                      key={opt.value}
+                      style={[styles.segmentSmallItem, active && styles.segmentSmallItemActive]}
+                      activeOpacity={BUTTON_ACTIVE_OPACITY}
+                      onPress={() => handleChangeTheme(opt.value)}
+                    >
+                      <Text style={[styles.segmentSmallText, active && styles.segmentSmallTextActive]}>
+                        {opt.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          </View>
+
+          <Text style={styles.settingsSection}>そのほか</Text>
+          <View style={styles.settingsGroup}>
+            <SettingsLink label="データ管理" onPress={() => setScreen(SCREEN.DATA)} />
+            <TouchableOpacity
+              style={[styles.settingsItem, styles.settingsItemBorder]}
+              activeOpacity={BUTTON_ACTIVE_OPACITY}
+              onPress={() => openUrl(pachimanagerUrl())}
+              accessibilityRole="link"
+            >
+              <View style={styles.settingsApp}>
+                <Image source={PACHIMANAGER_ICON} style={styles.settingsAppIcon} />
+                <Text style={styles.settingsItemText}>パチマネージャー</Text>
+              </View>
+              <Text style={styles.settingsChevron}>↗</Text>
+            </TouchableOpacity>
+            <SettingsLink label="このアプリについて" onPress={() => setScreen(SCREEN.ABOUT)} border />
+          </View>
+        </ScrollView>
+
+        <AdBanner
+          borderColor={colors.divider}
+          backgroundColor={colors.background}
+          textColor={colors.textGray}
+        />
+        <TabBar
+          active="settings"
+          onRecords={() => setScreen(SCREEN.HOME)}
+          onStart={startNewSession}
+          onSettings={() => {}}
+          highlight={sessions.length === 0}
+        />
+      </KeyboardAvoidingView>
+    );
+  }
+
+  // ========================================
+  // データ管理（設定 → データ管理）
+  // ========================================
+  if (screen === SCREEN.DATA) {
     return withTheme(
       <KeyboardAvoidingView
         style={styles.container}
@@ -1467,117 +1525,19 @@ export default function App() {
       >
         <StatusBar style={statusBarStyle} />
         <ScreenHeader
-          title="設定"
+          title="データ管理"
           leftLabel="戻る"
-          onLeftPress={() => setScreen(SCREEN.HOME)}
+          onLeftPress={() => setScreen(SCREEN.SETTINGS)}
         />
-        <ScrollView showsVerticalScrollIndicator={false}>
-          {/* 基準玉数 */}
-          <Text style={styles.label}>回転率の基準玉数</Text>
-          <TextInput
-            style={[styles.input, styles.numberMedium]}
-            value={draftRateBalls}
-            onChangeText={setDraftRateBalls}
-            keyboardType="numeric"
-            returnKeyType="done"
-          />
-
-          {/* 使用玉数ボタンの値 */}
-          <Text style={styles.label}>使用玉数ボタン</Text>
-          <View style={styles.settingsRow}>
-            {draftBallButtons.map((val, i) => (
-              <TextInput
-                key={`bb${i}`}
-                style={styles.settingsInput}
-                value={val}
-                onChangeText={(text) => {
-                  const next = [...draftBallButtons];
-                  next[i] = text;
-                  setDraftBallButtons(next);
-                }}
-                keyboardType="numeric"
-                returnKeyType="done"
-              />
-            ))}
+        <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <View style={styles.settingsGroup}>
+            <SettingsLink label="記録を書き出す" onPress={handleExportSessions} />
+            <SettingsLink label="記録を取り込む" onPress={() => setShowImport(true)} border />
           </View>
-
-          {/* 回転数ボタンの値 */}
-          <Text style={styles.label}>回転数ボタン</Text>
-          <View style={styles.settingsRow}>
-            {draftRotationButtons.map((val, i) => (
+          {showImport ? (
+            <>
               <TextInput
-                key={`rb${i}`}
-                style={styles.settingsInput}
-                value={val}
-                onChangeText={(text) => {
-                  const next = [...draftRotationButtons];
-                  next[i] = text;
-                  setDraftRotationButtons(next);
-                }}
-                keyboardType="numeric"
-                returnKeyType="done"
-              />
-            ))}
-          </View>
-
-          {/* 表示モード */}
-          <Text style={styles.label}>表示</Text>
-          <View style={styles.segmentRow}>
-            {THEME_OPTIONS.map((opt) => {
-              const active = draftTheme === opt.value;
-              return (
-                <TouchableOpacity
-                  key={opt.value}
-                  style={[styles.segment, active && styles.segmentActive]}
-                  activeOpacity={BUTTON_ACTIVE_OPACITY}
-                  onPress={() => setDraftTheme(opt.value)}
-                >
-                  <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
-                    {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          <AppButton label="保存する" onPress={handleSaveSettings} />
-          <TouchableOpacity
-            style={styles.resetDefaultButton}
-            activeOpacity={BUTTON_ACTIVE_OPACITY}
-            onPress={() => {
-              Alert.alert(
-                'デフォルトに戻しますか？',
-                '設定がすべて初期値にリセットされます',
-                [
-                  { text: 'キャンセル', style: 'cancel' },
-                  {
-                    text: 'リセット',
-                    onPress: () => {
-                      setDraftRateBalls(String(DEFAULT_SETTINGS.rateBalls));
-                      setDraftBallButtons(DEFAULT_SETTINGS.ballButtons.map(String));
-                      setDraftRotationButtons(DEFAULT_SETTINGS.rotationButtons.map(String));
-                    },
-                  },
-                ]
-              );
-            }}
-          >
-            <Text style={styles.resetDefaultButtonText}>デフォルトに戻す</Text>
-          </TouchableOpacity>
-
-          {/* データ管理 */}
-          <View style={styles.dataSection}>
-            <Text style={styles.dataSectionLabel}>データ管理</Text>
-            <TouchableOpacity
-              style={styles.dataButton}
-              activeOpacity={BUTTON_ACTIVE_OPACITY}
-              onPress={handleExportSessions}
-            >
-              <Text style={styles.dataButtonText}>すべての記録を書き出す</Text>
-            </TouchableOpacity>
-            {showImport ? (
-              <TextInput
-                style={styles.importInput}
+                style={[styles.importInput, styles.importInputSpaced]}
                 value={importText}
                 onChangeText={setImportText}
                 multiline
@@ -1586,25 +1546,117 @@ export default function App() {
                 autoCorrect={false}
                 textAlignVertical="top"
               />
-            ) : null}
+              <AppButton label="取り込む" onPress={handleImportSessions} />
+            </>
+          ) : null}
+          <View style={[styles.settingsGroup, styles.settingsGroupSpaced]}>
             <TouchableOpacity
-              style={styles.dataButton}
-              activeOpacity={BUTTON_ACTIVE_OPACITY}
-              onPress={handleImportSessions}
-            >
-              <Text style={styles.dataButtonText}>記録を取り込む</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.clearDataButton}
+              style={styles.settingsItem}
               activeOpacity={BUTTON_ACTIVE_OPACITY}
               onPress={handleClearSessions}
             >
-              <Text style={styles.clearDataButtonText}>すべての記録を削除</Text>
+              <Text style={[styles.settingsItemText, styles.settingsItemDanger]}>すべての記録を削除</Text>
             </TouchableOpacity>
           </View>
-
         </ScrollView>
       </KeyboardAvoidingView>
+    );
+  }
+
+  // ========================================
+  // このアプリについて（設定 → このアプリについて）
+  // ========================================
+  if (screen === SCREEN.ABOUT) {
+    return withTheme(
+      <View style={styles.container}>
+        <StatusBar style={statusBarStyle} />
+        <ScreenHeader
+          title="このアプリについて"
+          leftLabel="戻る"
+          onLeftPress={() => setScreen(SCREEN.SETTINGS)}
+        />
+        <View style={styles.settingsGroup}>
+          <TouchableOpacity
+            style={styles.settingsItem}
+            activeOpacity={BUTTON_ACTIVE_OPACITY}
+            onPress={() => openUrl(PRIVACY_POLICY_URL)}
+            accessibilityRole="link"
+          >
+            <Text style={styles.settingsItemText}>プライバシーポリシー</Text>
+            <Text style={styles.settingsChevron}>↗</Text>
+          </TouchableOpacity>
+          <SettingsLink label="ライセンス" onPress={() => setScreen(SCREEN.LICENSES)} border />
+          <View style={[styles.settingsItem, styles.settingsItemBorder]}>
+            <Text style={styles.settingsItemText}>バージョン</Text>
+            <Text style={[styles.settingsItemValue, styles.numberMedium]}>{APP_VERSION}</Text>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  // ========================================
+  // ライセンス一覧（このアプリについて → ライセンス）
+  // ========================================
+  if (screen === SCREEN.LICENSES) {
+    return withTheme(
+      <View style={styles.container}>
+        <StatusBar style={statusBarStyle} />
+        <ScreenHeader
+          title="ライセンス"
+          leftLabel="戻る"
+          onLeftPress={() => setScreen(SCREEN.ABOUT)}
+        />
+        <ScrollView
+          contentContainerStyle={styles.settingsScrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.settingsGroup}>
+            {LICENSES.map((item, i) => (
+              <TouchableOpacity
+                key={item.name}
+                style={[styles.settingsItem, i > 0 && styles.settingsItemBorder]}
+                activeOpacity={BUTTON_ACTIVE_OPACITY}
+                onPress={() => { setLicenseIndex(i); setScreen(SCREEN.LICENSE); }}
+              >
+                <View style={styles.licenseName}>
+                  <Text style={styles.settingsItemText} numberOfLines={1}>{item.name}</Text>
+                  <Text style={styles.licenseKind}>{item.license}</Text>
+                </View>
+                <Text style={styles.settingsChevron}>›</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // ========================================
+  // ライセンスの全文（ライセンス一覧 → 1件）
+  // ========================================
+  if (screen === SCREEN.LICENSE) {
+    const item = LICENSES[licenseIndex];
+    if (!item) {
+      setScreen(SCREEN.LICENSES);
+      return null;
+    }
+    return withTheme(
+      <View style={styles.container}>
+        <StatusBar style={statusBarStyle} />
+        <ScreenHeader
+          title={item.name}
+          leftLabel="戻る"
+          onLeftPress={() => setScreen(SCREEN.LICENSES)}
+        />
+        <ScrollView
+          contentContainerStyle={styles.settingsScrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={styles.licenseVersion}>{item.version}</Text>
+          <Text style={styles.licenseText}>{item.text}</Text>
+        </ScrollView>
+      </View>
     );
   }
 
@@ -1644,11 +1696,114 @@ export default function App() {
   }
 
   // ========================================
+  // 台情報の欄（遊技中に機種名の行を押すと、画面の下から出る）
+  // ========================================
+  // 機種名・店舗名の入力履歴から、入力中の文字を含むものを最大5件だけ候補に出す
+  const renderNameChips = (history, value, onSelect) => {
+    const matches = history
+      .filter((n) => n !== value && n.toLowerCase().includes(value.trim().toLowerCase()))
+      .slice(0, 5);
+    if (matches.length === 0) return null;
+    return (
+      <View style={styles.chipRow}>
+        {matches.map((name) => (
+          <TouchableOpacity
+            key={name}
+            style={styles.chip}
+            activeOpacity={BUTTON_ACTIVE_OPACITY}
+            onPress={() => onSelect(name)}
+          >
+            <Text style={styles.chipText} numberOfLines={1}>{name}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    );
+  };
+
+  const renderInfoSheet = () => (
+    <Modal
+      visible={showInfoSheet}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setShowInfoSheet(false)}
+    >
+      <KeyboardAvoidingView
+        style={styles.sheetBackdrop}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <TouchableOpacity
+          style={styles.sheetScrim}
+          activeOpacity={1}
+          onPress={() => setShowInfoSheet(false)}
+        />
+        <View style={styles.sheet}>
+          <View style={styles.sheetGrabber} />
+          <ScreenHeader
+            title="台情報"
+            rightLabel="完了"
+            rightVariant="pill"
+            onRightPress={() => setShowInfoSheet(false)}
+          />
+          <ScrollView
+            style={styles.sheetScroll}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={[styles.label, styles.sheetFirstLabel]}>機種名</Text>
+            <TextInput
+              style={styles.input}
+              value={machineName}
+              onChangeText={setMachineName}
+              maxLength={50}
+              returnKeyType="next"
+            />
+            {renderNameChips(machineNameHistory, machineName, setMachineName)}
+
+            <Text style={styles.label}>店舗名</Text>
+            <TextInput
+              style={styles.input}
+              value={storeName}
+              onChangeText={setStoreName}
+              maxLength={50}
+              returnKeyType="next"
+            />
+            {renderNameChips(storeNameHistory, storeName, setStoreName)}
+
+            <Text style={styles.label}>台番号</Text>
+            <TextInput
+              style={[styles.input, styles.numberMedium]}
+              value={machineNumber}
+              onChangeText={setMachineNumber}
+              keyboardType="numeric"
+              maxLength={5}
+            />
+
+            <Text style={styles.label}>メモ</Text>
+            <TextInput
+              style={styles.memoInput}
+              value={memo}
+              onChangeText={setMemo}
+              multiline
+              maxLength={200}
+              textAlignVertical="top"
+            />
+            <Text style={styles.memoCounter}>{memo.length} / 200</Text>
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+
+  // ========================================
   // 遊技中画面（playing）
   // 上のヘッダーに「中断」「保存」、本体は回転率＋入力カード2枚＋リセット
+  // 開始時の回転数がまだなければ、回転率の場所がその入力欄になる
   // ========================================
+  const startMissing = isNaN(parseInt(startRotation, 10));
+  const showStartInput = editingStart || startMissing;
+
   const renderCounterCard = (label, value, onChange, placeholder, buttons, add) => (
-    <View style={styles.playingCard}>
+    <View style={[styles.playingCard, startMissing && styles.playingDisabled]}>
       <Text style={styles.playingLabel}>{label}</Text>
       <TextInput
         style={styles.playingInput}
@@ -1712,15 +1867,57 @@ export default function App() {
       >
         {/* ===== 上部: 台情報 + 玉あたり回転率 + 総計 ===== */}
         <View style={styles.rateDisplay}>
-          {storeName ? (
-            <Text style={styles.playingStoreName}>{storeName}</Text>
-          ) : null}
-          <Text style={styles.playingMachineName}>
-            {machineName || '機種未入力'}
-            {machineNumber ? `（${machineNumber}番台）` : ''}
-          </Text>
-          <Text style={styles.rateDisplayValue}>{calcRotationRate()}</Text>
-          <Text style={styles.rateUnit}>回転 / {settings.rateBalls}玉</Text>
+          {/* 台情報（押すと台情報の欄が開く） */}
+          <TouchableOpacity
+            style={styles.playingInfoButton}
+            activeOpacity={BUTTON_ACTIVE_OPACITY}
+            onPress={() => setShowInfoSheet(true)}
+            accessibilityRole="button"
+          >
+            {storeName ? (
+              <Text style={styles.playingStoreName}>{storeName}</Text>
+            ) : null}
+            <Text style={styles.playingMachineName}>
+              {machineName || '機種未入力'}
+              {machineNumber ? `（${machineNumber}番台）` : ''}
+              <Text style={styles.playingInfoChevron}>  ›</Text>
+            </Text>
+          </TouchableOpacity>
+
+          {showStartInput ? (
+            // 開始時の回転数の入力（入れ終わってキーボードを閉じると回転率の表示に戻る）
+            <View style={styles.startEntry}>
+              <Text style={styles.playingLabel}>開始時の回転数</Text>
+              <TextInput
+                style={styles.playingInput}
+                value={startRotation}
+                onChangeText={setStartRotation}
+                onBlur={commitStartRotation}
+                onSubmitEditing={commitStartRotation}
+                keyboardType="numeric"
+                returnKeyType="done"
+                maxLength={7}
+                autoFocus
+                selectTextOnFocus={true}
+              />
+            </View>
+          ) : (
+            <>
+              <Text style={styles.rateDisplayValue}>{calcRotationRate()}</Text>
+              <Text style={styles.rateUnit}>回転 / {settings.rateBalls}玉</Text>
+              {/* 開始時の回転数（押すと直せる） */}
+              <TouchableOpacity
+                style={styles.startTag}
+                activeOpacity={BUTTON_ACTIVE_OPACITY}
+                onPress={() => setEditingStart(true)}
+                accessibilityRole="button"
+              >
+                <Text style={styles.startTagText}>
+                  開始 <Text style={styles.numberMedium}>{parseInt(startRotation, 10).toLocaleString()}</Text>
+                </Text>
+              </TouchableOpacity>
+            </>
+          )}
 
           {/* 総遊技回転数・総使用玉数の常時表示 */}
           <View style={styles.totalRow}>
@@ -1754,13 +1951,15 @@ export default function App() {
 
         {/* ===== リセットして続ける ===== */}
         <TouchableOpacity
-          style={styles.resetButton}
+          style={[styles.resetButton, startMissing && styles.playingDisabled]}
           activeOpacity={BUTTON_ACTIVE_OPACITY}
           onPress={handleOpenReset}
         >
           <Text style={styles.resetButtonText}>リセットして続ける</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {renderInfoSheet()}
     </KeyboardAvoidingView>
   );
 }
@@ -1809,6 +2008,140 @@ function ScreenHeader({
         ) : null}
       </View>
     </View>
+  );
+}
+
+// 下のタブ（一覧・遊技開始の丸・設定）。記録一覧と設定の画面に出す
+// active: 'records' | 'settings'
+// highlight: true で丸から波紋を出し続ける（記録が1件もないとき）
+function TabBar({ active, onRecords, onStart, onSettings, highlight }) {
+  const { colors, styles } = useContext(ThemeContext);
+  const tint = (key) => (active === key ? colors.primary : colors.textMuted);
+
+  // 波紋（4秒に1回、輪が1本広がって消える）
+  const ripple = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!highlight) return undefined;
+    const loop = Animated.loop(
+      Animated.timing(ripple, {
+        toValue: 1,
+        duration: TAB_RIPPLE_DURATION,
+        easing: Easing.linear,
+        useNativeDriver: USE_NATIVE_DRIVER,
+      })
+    );
+    loop.start();
+    return () => {
+      loop.stop();
+      ripple.setValue(0);
+    };
+  }, [highlight]);
+
+  return (
+    <>
+      {/* 丸（と波紋）がタブからはみ出す分のすき間（すぐ上の広告に重ねない） */}
+      <View style={[styles.tabSpacer, highlight && styles.tabSpacerHighlight]} />
+      <View style={styles.tabBar}>
+        <TouchableOpacity
+          style={styles.tabItem}
+          activeOpacity={BUTTON_ACTIVE_OPACITY}
+          onPress={onRecords}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: active === 'records' }}
+        >
+          <ListIcon color={tint('records')} />
+          <Text style={[styles.tabLabel, { color: tint('records') }]}>一覧</Text>
+        </TouchableOpacity>
+        <View style={styles.tabCenter}>
+          <View style={styles.tabStartWrap}>
+            {highlight ? (
+              <Animated.View
+                style={[
+                  styles.tabRipple,
+                  {
+                    opacity: ripple.interpolate({
+                      inputRange: RIPPLE_INPUT,
+                      outputRange: RIPPLE_PROGRESS.map((p) => 0.6 * (1 - p)),
+                    }),
+                    transform: [{
+                      scale: ripple.interpolate({
+                        inputRange: RIPPLE_INPUT,
+                        outputRange: RIPPLE_PROGRESS.map((p) => 1 + (TAB_RIPPLE_SCALE - 1) * p),
+                      }),
+                    }],
+                  },
+                ]}
+              />
+            ) : null}
+            <TouchableOpacity
+              style={styles.tabStart}
+              activeOpacity={BUTTON_ACTIVE_OPACITY}
+              onPress={onStart}
+              accessibilityRole="button"
+              accessibilityLabel="遊技開始"
+            >
+              <View style={styles.plusBarH} />
+              <View style={styles.plusBarV} />
+            </TouchableOpacity>
+          </View>
+        </View>
+        <TouchableOpacity
+          style={styles.tabItem}
+          activeOpacity={BUTTON_ACTIVE_OPACITY}
+          onPress={onSettings}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: active === 'settings' }}
+        >
+          <SlidersIcon color={tint('settings')} />
+          <Text style={[styles.tabLabel, { color: tint('settings') }]}>設定</Text>
+        </TouchableOpacity>
+      </View>
+    </>
+  );
+}
+
+// 一覧タブのアイコン（点と線を3段）。画像やアイコンの部品を足さずに View で描く
+function ListIcon({ color }) {
+  const { styles } = useContext(ThemeContext);
+  return (
+    <View style={styles.tabIcon}>
+      {[0, 1, 2].map((i) => (
+        <View key={i} style={styles.listIconRow}>
+          <View style={[styles.listIconDot, { backgroundColor: color }]} />
+          <View style={[styles.listIconLine, { backgroundColor: color }]} />
+        </View>
+      ))}
+    </View>
+  );
+}
+
+// 設定タブのアイコン（つまみ付きの線を3段）
+function SlidersIcon({ color }) {
+  const { styles } = useContext(ThemeContext);
+  return (
+    <View style={styles.tabIcon}>
+      {[7, 15, 3].map((knob, i) => (
+        <View key={i} style={styles.sliderIconRow}>
+          <View style={[styles.sliderIconLine, { backgroundColor: color }]} />
+          <View style={[styles.sliderIconKnob, { borderColor: color, left: knob }]} />
+        </View>
+      ))}
+    </View>
+  );
+}
+
+// 設定の1行（押すと次の画面へ進む）。border=true で上に区切り線
+function SettingsLink({ label, onPress, border }) {
+  const { styles } = useContext(ThemeContext);
+  return (
+    <TouchableOpacity
+      style={[styles.settingsItem, border && styles.settingsItemBorder]}
+      activeOpacity={BUTTON_ACTIVE_OPACITY}
+      onPress={onPress}
+    >
+      <Text style={styles.settingsItemText}>{label}</Text>
+      <Text style={styles.settingsChevron}>›</Text>
+    </TouchableOpacity>
   );
 }
 
@@ -1935,66 +2268,7 @@ function makeStyles(C) {
       fontSize: TYPE_SIZE.metric,
       color: C.textMuted,
     },
-    // ホーム: 遊技開始ボタンの下部余白（ジェスチャーバー/ホームインジケーター回避）
-    homeFooter: {
-      paddingBottom: Platform.OS === 'ios' ? 34 : 24,
-    },
 
-    // 初回起動の案内
-    onboardingBody: {
-      flex: 1,
-      justifyContent: 'center',
-      paddingBottom: SPACING.xl,
-    },
-    onboardingTitle: {
-      fontSize: 32,
-      fontWeight: '700',
-      color: C.textDark,
-      textAlign: 'center',
-      letterSpacing: -0.5,
-    },
-    onboardingSubtitle: {
-      fontSize: TYPE_SIZE.label + 1,
-      color: C.textMuted,
-      textAlign: 'center',
-      marginTop: SPACING.xs,
-      marginBottom: SPACING.xl,
-    },
-    onboardingCard: {
-      backgroundColor: C.surface,
-      borderRadius: RADIUS.surface,
-      paddingHorizontal: SPACING.md,
-      ...surfaceShadow(C),
-    },
-    onboardingStep: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingVertical: SPACING.md,
-      gap: SPACING.sm,
-    },
-    onboardingStepBorder: {
-      borderBottomWidth: 1,
-      borderBottomColor: C.divider,
-    },
-    onboardingBadge: {
-      width: 28,
-      height: 28,
-      borderRadius: 14,
-      backgroundColor: C.primaryTint,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    onboardingBadgeText: {
-      fontSize: TYPE_SIZE.label + 1,
-      fontFamily: 'Inter_700Bold',
-      color: C.primaryDeep,
-    },
-    onboardingStepText: {
-      flex: 1,
-      fontSize: TYPE_SIZE.body,
-      color: C.textBody,
-      lineHeight: 22,
-    },
 
     // 画面共通ヘッダー
     screenHeader: {
@@ -2047,47 +2321,6 @@ function makeStyles(C) {
       letterSpacing: -0.3,
     },
 
-    // 設定画面
-    settingsRow: {
-      flexDirection: 'row',
-      gap: SPACING.sm,
-      marginTop: SPACING.xxs,
-    },
-    settingsInput: {
-      ...inputBase,
-      ...numberInput,
-      flex: 1,
-      minWidth: 0,
-      padding: SPACING.md,
-      fontSize: TYPE_SIZE.metric,
-    },
-    // 表示モードの3択
-    segmentRow: {
-      flexDirection: 'row',
-      backgroundColor: C.surface,
-      borderRadius: RADIUS.control,
-      padding: 4,
-      gap: 4,
-      ...surfaceShadow(C),
-    },
-    segment: {
-      flex: 1,
-      height: 40,
-      borderRadius: RADIUS.control - 4,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    segmentActive: {
-      backgroundColor: C.primaryTint,
-    },
-    segmentText: {
-      fontSize: TYPE_SIZE.label + 1,
-      fontWeight: '600',
-      color: C.textGray,
-    },
-    segmentTextActive: {
-      color: C.primaryDeep,
-    },
 
     // 詳細画面
     detailDateBlock: {
@@ -2186,24 +2419,8 @@ function makeStyles(C) {
       paddingVertical: SPACING.sm,
       lineHeight: 22,
     },
-    // 開始時の回転数（setup画面最上部の強調ブロック）
-    startRotationBlock: {
-      backgroundColor: C.surface,
-      borderRadius: RADIUS.surface,
-      padding: SPACING.md,
-      marginTop: SPACING.xs,
-      marginBottom: SPACING.sm,
-      ...surfaceShadow(C),
-    },
-    startRotationLabel: {
-      fontSize: TYPE_SIZE.label,
-      color: C.textGray,
-      fontWeight: '600',
-      marginBottom: SPACING.xs,
-      letterSpacing: 0.2,
-    },
 
-    // メモ入力欄（setup・編集画面）
+    // メモ入力欄（台情報の欄・編集画面）
     memoInput: {
       ...inputBase,
       padding: SPACING.md,
@@ -2267,67 +2484,8 @@ function makeStyles(C) {
       color: C.textMuted,
     },
 
-    // 入力候補リスト
-    suggestionsContainer: {
-      backgroundColor: C.surface,
-      borderRadius: RADIUS.control,
-      marginTop: SPACING.xxs,
-      marginBottom: SPACING.xxs,
-      overflow: 'hidden',
-      ...surfaceShadow(C),
-    },
-    suggestionItem: {
-      paddingVertical: SPACING.sm,
-      paddingHorizontal: SPACING.md,
-      borderBottomWidth: 1,
-      borderBottomColor: C.divider,
-    },
-    suggestionText: {
-      fontSize: TYPE_SIZE.label + 1,
-      color: C.textBody,
-    },
 
-    resetDefaultButton: {
-      height: 44,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginTop: SPACING.xs,
-    },
-    resetDefaultButtonText: {
-      fontSize: TYPE_SIZE.label + 1,
-      color: C.textMuted,
-      fontWeight: '600',
-    },
 
-    // データ管理セクション（設定画面）
-    dataSection: {
-      marginTop: SPACING.xl,
-      paddingTop: SPACING.lg,
-      borderTopWidth: 1,
-      borderTopColor: C.divider,
-      marginBottom: SPACING.xl,
-    },
-    dataSectionLabel: {
-      fontSize: TYPE_SIZE.label,
-      color: C.textMuted,
-      fontWeight: '600',
-      marginBottom: SPACING.sm,
-      letterSpacing: 0.3,
-    },
-    dataButton: {
-      height: 48,
-      borderRadius: RADIUS.control,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginBottom: SPACING.xs,
-      backgroundColor: C.surface,
-      ...surfaceShadow(C),
-    },
-    dataButtonText: {
-      fontSize: TYPE_SIZE.label + 1,
-      fontWeight: '600',
-      color: C.primary,
-    },
     // 取り込むデータの貼り付け欄
     importInput: {
       ...inputBase,
@@ -2335,18 +2493,6 @@ function makeStyles(C) {
       fontSize: TYPE_SIZE.label,
       height: 120,
       marginBottom: SPACING.xs,
-    },
-    clearDataButton: {
-      height: 48,
-      borderRadius: RADIUS.control,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: C.dangerTint,
-    },
-    clearDataButtonText: {
-      fontSize: TYPE_SIZE.label + 1,
-      fontWeight: '600',
-      color: C.danger,
     },
 
     // セッションカード
@@ -2436,23 +2582,12 @@ function makeStyles(C) {
       marginLeft: 2,
       letterSpacing: 0.2,
     },
-    required: {
-      color: C.danger,
-      fontSize: TYPE_SIZE.caption,
-      fontWeight: '600',
-    },
-    hint: {
-      fontSize: TYPE_SIZE.caption,
-      color: C.textMuted,
-      marginBottom: SPACING.xs,
-      marginTop: -2,
-    },
     input: {
       ...inputBase,
       padding: SPACING.md,
       fontSize: TYPE_SIZE.body,
     },
-    // 大きい数字の入力欄（setup の開始回転数・リセット画面）
+    // 大きい数字の入力欄（リセット画面）
     inputLarge: {
       ...numberInput,
       backgroundColor: C.surfaceSunken,
@@ -2508,6 +2643,348 @@ function makeStyles(C) {
       fontSize: TYPE_SIZE.input,
       color: C.textDark,
       letterSpacing: -0.5,
+    },
+
+    // 開始時の回転数が入るまで、入力カードとリセットを薄くして押せなくする
+    playingDisabled: {
+      opacity: 0.4,
+      pointerEvents: 'none',
+    },
+    // 回転率カード上部の台情報（押すと台情報の欄が開く）
+    playingInfoButton: {
+      alignItems: 'center',
+      minHeight: 32,
+      justifyContent: 'center',
+      paddingHorizontal: SPACING.sm,
+    },
+    playingInfoChevron: {
+      color: C.textMuted,
+    },
+    // 回転率の場所に出す、開始時の回転数の入力
+    startEntry: {
+      alignSelf: 'stretch',
+      marginTop: SPACING.sm,
+    },
+    // 回転率の下の「開始 120」（押すと直せる）
+    startTag: {
+      marginTop: SPACING.xs,
+      paddingVertical: SPACING.xxs,
+      paddingHorizontal: SPACING.sm,
+      borderRadius: 999,
+      backgroundColor: C.surfaceSunken,
+    },
+    startTagText: {
+      fontSize: TYPE_SIZE.caption,
+      color: C.textGray,
+    },
+
+    // 台情報の欄（遊技中画面の下から出る）
+    sheetBackdrop: {
+      flex: 1,
+    },
+    sheetScrim: {
+      flex: 1,
+      backgroundColor: C.scrim,
+    },
+    sheet: {
+      backgroundColor: C.background,
+      borderTopLeftRadius: RADIUS.surface,
+      borderTopRightRadius: RADIUS.surface,
+      paddingHorizontal: SPACING.md,
+      paddingTop: SPACING.xs,
+      paddingBottom: Platform.OS === 'ios' ? 34 : 24,
+      maxHeight: '88%',
+    },
+    sheetGrabber: {
+      alignSelf: 'center',
+      width: 36,
+      height: 5,
+      borderRadius: 3,
+      backgroundColor: C.border,
+      marginBottom: SPACING.xs,
+    },
+    sheetScroll: {
+      flexGrow: 0,
+    },
+    sheetFirstLabel: {
+      marginTop: 0,
+    },
+    // 機種名・店舗名の候補（入力履歴）
+    chipRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: SPACING.xs,
+      marginTop: SPACING.xs,
+    },
+    chip: {
+      maxWidth: '100%',
+      paddingVertical: 6,
+      paddingHorizontal: SPACING.sm,
+      borderRadius: 999,
+      backgroundColor: C.surface,
+      ...surfaceShadow(C),
+    },
+    chipText: {
+      fontSize: TYPE_SIZE.label + 1,
+      color: C.textBody,
+    },
+
+    // 下のタブ（記録・遊技開始の丸・設定）
+    tabBar: {
+      flexDirection: 'row',
+      marginHorizontal: -SPACING.md,
+      paddingBottom: Platform.OS === 'ios' ? 30 : 20,
+      backgroundColor: C.surface,
+      borderTopWidth: 1,
+      borderTopColor: C.divider,
+    },
+    tabItem: {
+      flex: 1,
+      alignItems: 'center',
+      paddingTop: SPACING.xs,
+      paddingBottom: SPACING.xxs,
+      gap: 3,
+    },
+    tabLabel: {
+      fontSize: 11,
+      fontWeight: '600',
+    },
+    tabCenter: {
+      width: 96,
+      alignItems: 'center',
+    },
+    // 遊技開始の丸（直径 64）。外側に背景色の縁を付けて、タブから浮いて見せる
+    tabStart: {
+      width: 64 + TAB_START_RING * 2,
+      height: 64 + TAB_START_RING * 2,
+      borderRadius: 32 + TAB_START_RING,
+      borderWidth: TAB_START_RING,
+      borderColor: C.background,
+      backgroundColor: C.primaryButton,
+      alignItems: 'center',
+      justifyContent: 'center',
+      ...primaryShadow(C),
+    },
+    // 丸と波紋を重ねる入れ物（タブから上へはみ出させる）
+    tabStartWrap: {
+      width: 64 + TAB_START_RING * 2,
+      height: 64 + TAB_START_RING * 2,
+      marginTop: -TAB_START_LIFT,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    // 記録が0件のときに丸から広がる輪
+    tabRipple: {
+      position: 'absolute',
+      width: 64,
+      height: 64,
+      borderRadius: 32,
+      borderWidth: 3,
+      borderColor: C.primary,
+      pointerEvents: 'none',
+    },
+    plusBarH: {
+      position: 'absolute',
+      width: 28,
+      height: 3.5,
+      borderRadius: 2,
+      backgroundColor: C.onPrimary,
+    },
+    plusBarV: {
+      position: 'absolute',
+      width: 3.5,
+      height: 28,
+      borderRadius: 2,
+      backgroundColor: C.onPrimary,
+    },
+    // 丸がタブからはみ出す分のすき間（広告に丸を重ねない。重ねると AdMob の規約違反）
+    tabSpacer: {
+      height: TAB_START_LIFT + 4,
+    },
+    tabSpacerHighlight: {
+      height: TAB_RIPPLE_SPACER,
+    },
+    tabIcon: {
+      width: 24,
+      height: 24,
+      justifyContent: 'space-around',
+      paddingVertical: 2,
+    },
+    listIconRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    listIconDot: {
+      width: 4,
+      height: 4,
+      borderRadius: 2,
+    },
+    listIconLine: {
+      flex: 1,
+      height: 2.5,
+      borderRadius: 1.5,
+    },
+    sliderIconRow: {
+      height: 8,
+      justifyContent: 'center',
+    },
+    sliderIconLine: {
+      height: 2.5,
+      borderRadius: 1.5,
+    },
+    sliderIconKnob: {
+      position: 'absolute',
+      top: 0,
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      borderWidth: 2.5,
+      backgroundColor: C.surface,
+    },
+
+    // 設定（まとまりごとの白い面に1行ずつ並べる）
+    settingsScroll: {
+      flex: 1,
+      marginHorizontal: -SPACING.md,
+    },
+    settingsScrollContent: {
+      paddingHorizontal: SPACING.md,
+      paddingBottom: SPACING.lg,
+    },
+    settingsSection: {
+      fontSize: TYPE_SIZE.label,
+      color: C.textGray,
+      fontWeight: '600',
+      marginTop: SPACING.lg,
+      marginBottom: SPACING.xs,
+      marginLeft: SPACING.xxs,
+      letterSpacing: 0.2,
+    },
+    settingsSectionFirst: {
+      marginTop: SPACING.xxs,
+    },
+    settingsGroup: {
+      backgroundColor: C.surface,
+      borderRadius: RADIUS.surface,
+      overflow: 'hidden',
+      ...surfaceShadow(C),
+    },
+    settingsGroupSpaced: {
+      marginTop: SPACING.xl,
+    },
+    settingsItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      minHeight: 52,
+      paddingHorizontal: SPACING.md,
+      gap: SPACING.sm,
+    },
+    settingsItemBorder: {
+      borderTopWidth: 1,
+      borderTopColor: C.divider,
+    },
+    settingsItemText: {
+      fontSize: TYPE_SIZE.body - 1,
+      color: C.textBody,
+      flexShrink: 1,
+    },
+    settingsItemMuted: {
+      color: C.textMuted,
+    },
+    settingsItemDanger: {
+      color: C.danger,
+      fontWeight: '600',
+    },
+    settingsItemValue: {
+      fontSize: TYPE_SIZE.body - 1,
+      color: C.textMuted,
+    },
+    settingsChevron: {
+      fontSize: TYPE_SIZE.metric,
+      color: C.textMuted,
+    },
+    settingsNums: {
+      flexDirection: 'row',
+      gap: 6,
+    },
+    // 文字が上下に切れないよう、入力欄の内側の上下の余白を消して縦の中央にそろえる
+    // （Android は既定で上下に余白と文字の上の空きがあり、高さ 36 だと上が欠ける）
+    settingsNumInput: {
+      ...numberInput,
+      width: 72,
+      height: 38,
+      paddingHorizontal: SPACING.xs,
+      paddingVertical: 0,
+      includeFontPadding: false,
+      textAlignVertical: 'center',
+      borderRadius: 10,
+      backgroundColor: C.surfaceSunken,
+      fontSize: TYPE_SIZE.body - 1,
+      color: C.textDark,
+    },
+    settingsNumInputSmall: {
+      width: 54,
+    },
+    settingsApp: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: SPACING.sm,
+      paddingVertical: SPACING.xs,
+    },
+    settingsAppIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: 9,
+    },
+    // テーマの切り替え（設定の行の中に収まる小さいもの）
+    segmentSmall: {
+      flexDirection: 'row',
+      backgroundColor: C.surfaceSunken,
+      borderRadius: 10,
+      padding: 3,
+      gap: 3,
+    },
+    segmentSmallItem: {
+      paddingVertical: 6,
+      paddingHorizontal: SPACING.sm,
+      borderRadius: 8,
+    },
+    segmentSmallItemActive: {
+      backgroundColor: C.surface,
+      ...surfaceShadow(C),
+    },
+    segmentSmallText: {
+      fontSize: TYPE_SIZE.label,
+      fontWeight: '600',
+      color: C.textGray,
+    },
+    segmentSmallTextActive: {
+      color: C.textDark,
+    },
+    importInputSpaced: {
+      marginTop: SPACING.md,
+    },
+    // ライセンス
+    licenseName: {
+      flex: 1,
+      paddingVertical: SPACING.xs,
+    },
+    licenseKind: {
+      fontSize: TYPE_SIZE.caption,
+      color: C.textMuted,
+      marginTop: 2,
+    },
+    licenseVersion: {
+      fontSize: TYPE_SIZE.caption,
+      color: C.textMuted,
+      marginBottom: SPACING.sm,
+    },
+    licenseText: {
+      fontSize: TYPE_SIZE.caption,
+      lineHeight: 18,
+      color: C.textBody,
     },
 
     // ボタン行（+/- 共通の横並び）

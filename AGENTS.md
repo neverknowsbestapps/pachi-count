@@ -45,20 +45,27 @@ node -e "const fs=require('fs');require('@babel/parser').parse(fs.readFileSync('
 ## アーキテクチャ
 
 ### 単一ファイル構成
-すべてのコードは **`App.js`（約2,200行）に集約**されている。意図的に1ファイルで保守している（初心者が全体を把握しやすくするため）。安易にファイル分割しない。
+すべてのコードは **`App.js`（約3,000行）に集約**されている。ほかは広告（`ads.js`）・レビュー依頼（`review.js`）と、ライセンス一覧のデータ（`licenses.js`。`node scripts/make-licenses.mjs` で作る。部品を足したり版を上げたりしたら作り直す）だけ。意図的に1ファイルで保守している（初心者が全体を把握しやすくするため）。安易にファイル分割しない。
 
 ### 画面遷移（React Navigation 不使用）
 `screen` という state 1つで画面を切り替える。画面名は `SCREEN` 定数で管理：
 
 | SCREEN | 役割 |
 |---|---|
-| `HOME` | 記録一覧（カードをタップで詳細へ） |
-| `SETUP` | 台情報・開始回転数の入力 |
-| `PLAYING` | 遊技中のメイン操作画面 |
+| `HOME` | 記録一覧（下のタブの「一覧」。カードをタップで詳細へ） |
+| `PLAYING` | 遊技中のメイン操作画面。開始回転数もここで入れる。台情報（機種名・店舗名・台番号・メモ）は機種名の行を押すと下から出る欄で入れる |
 | `RESET` | 大当たり後の「リセットして続ける」 |
-| `SETTINGS` | 基準玉数・ボタン値のカスタム設定 |
+| `SETTINGS` | 設定（下のタブの「設定」）。基準玉数・ボタン値・表示。変えたらその場で保存（数字は入力欄を離れたとき） |
+| `DATA` | 設定 → データ管理（書き出し・取り込み・全削除） |
+| `ABOUT` | 設定 → このアプリについて（プライバシーポリシー・ライセンス・バージョン） |
+| `LICENSES` / `LICENSE` | ライセンス一覧と、1件の全文 |
 | `DETAIL` | 記録の詳細表示 |
 | `EDIT` | 記録の編集 |
+
+- `HOME` と `SETTINGS` の下にはタブ（`TabBar`）を出す。真ん中の丸（直径64）で `PLAYING` へ。丸はタブから上にはみ出すので、すぐ上の広告に重ならないよう間をあけている（重ねると AdMob の規約違反）。記録が0件の間は丸から4秒に1回波紋を出し、その分だけ間を広げる（1件保存すると止まる）
+- プライバシーポリシーはストアの規約でアプリ内からも開ける必要がある（`ABOUT`）。設定にはパチマネージャー（姉妹アプリ・収支の記録）のストアへのリンクも置く
+- 起動時は `HOME`。途中経過があれば `PLAYING` に復帰する
+- 何も入力していない遊技は、「中断」で確認なしに `HOME` へ戻り、途中経過も残さない
 
 ### 状態管理
 `App()` 内の `useState` 群のみ。グローバル state ライブラリは使わない。
@@ -69,7 +76,7 @@ node -e "const fs=require('fs');require('@babel/parser').parse(fs.readFileSync('
 - `@rotation_names_v1` — 機種名・店舗名の入力履歴
 - `@rotation_playing_v1` — 遊技中の途中経過。値が変わるたびに書き、起動時にあれば遊技中画面へ復帰する。保存・中断で消す
 - `@rotation_review_v1` — レビュー依頼の保存回数と表示済みフラグ（`review.js`）
-- `@rotation_onboarding_v1` — 初回起動の案内を表示済みなら `'1'`（記録が1件以上あれば案内を出さずに立てる）
+- `@rotation_onboarding_v1` — 1.3.1 までの初回案内の表示済みフラグ。1.3.2 で案内をなくしたので読み書きしない（端末に残っていても害はない）
 
 ---
 
@@ -113,7 +120,9 @@ node -e "const fs=require('fs');require('@babel/parser').parse(fs.readFileSync('
 ### 再利用コンポーネント（`App()` の直後に定義）
 - `AppButton({ label, onPress, variant })` — `variant="secondary"` で見た目を切替
 - `DetailRow({ label, value, highlight })` — 詳細画面の「ラベル＋値」行
-- `renderSuggestions(...)` — 機種名・店舗名の入力候補リスト（共通）
+- `renderNameChips(...)` — 機種名・店舗名の入力履歴を候補として並べる（台情報の欄）
+- `TabBar({ active, onRecords, onStart, onSettings })` — 下のタブ。アイコンは部品を足さず View で描く（`ListIcon` / `SlidersIcon`）
+- `SettingsLink({ label, onPress, border })` — 設定の「押すと次の画面へ」の1行
 
 ### 日本語で書く
 - UI テキスト・コメントはすべて**日本語**
@@ -140,7 +149,7 @@ rate = (rotations / ballsUsed) * settings.rateBalls
 
 ### 4. 入力検証
 - 文字数上限：機種名・店舗名 50 / 台番号 5 / 数値入力 7桁 / メモ 200
-- 回転数 0 回での保存はブロック
+- 回転数 0 回・開始回転数なしでの保存はブロック
 - 編集画面では存在しない日付（2/31 等）を弾く。「終了 < 開始」の時刻は翌日の終了とみなす（所要時間も 24 時間を足して計算）
 - 記録を書き込む前は必ず `getSessionsForWrite()` で土台の一覧を取る（読み込み失敗のまま空で上書きしないため）
 
