@@ -7,7 +7,7 @@
 // 設定（パスはアプリの根から）:
 // {
 //   "out": "docs/store/assets",
-//   "colors": { "bg": "#13203b", "name": "#ffffff", "tag": "#8fc2ff" },   // plate の色も足せる（無ければ地を 24% 明るく）
+//   "colors": { "bg": "#13203b", "name": "#ffffff", "tag": "#ffffff", "em": "#ffd23f" },   // em は一言の [ ] で囲んだ所の色。plate の色も足せる（無ければ地を 24% 明るく）
 //   "frame": "device",   // 画面と地の境目: none / border（白い縁）/ device（端末の縁）/ plate（画面の側の地を明るく）/ glow
 //   "langs": {
 //     "ja": {

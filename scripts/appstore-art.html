@@ -46,7 +46,18 @@ const nameEl = document.getElementById('name');
 const tagEl = document.getElementById('tag');
 nameEl.textContent = c.name;
 nameEl.style.color = c.colors.name;
-tagEl.textContent = c.tag;
+// 一言の [ ] で囲んだ所は colors.em の色で強調する
+c.tag.split(/(\[[^\]]*\])/).forEach((part) => {
+  if (!part) return;
+  if (part.startsWith('[')) {
+    const em = document.createElement('span');
+    em.textContent = part.slice(1, -1);
+    em.style.color = c.colors.em || c.colors.tag;
+    tagEl.appendChild(em);
+  } else {
+    tagEl.appendChild(document.createTextNode(part));
+  }
+});
 tagEl.style.color = c.colors.tag;
 if (c.kind === 'search') nameEl.remove();
 
