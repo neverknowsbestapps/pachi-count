@@ -8,12 +8,17 @@
 //     時点で例外になる。それを捕まえて「広告なし」で動かす
 // つまり広告が実際に出るのは、EAS でビルドしたアプリだけ。
 //
-// 本番の広告を出すときは USE_TEST_ADS を false にして UNIT_IDS を埋め、
-// app.json のアプリIDも AdMob の本物に差し替える。
+// 広告ユニットID（下の UNIT_IDS）と app.json のアプリIDは、どちらも AdMob の本物。
+// 動作を試すときだけ USE_TEST_ADS を true にする。
+//
+// iOS 向けに、app.json へ SKAdNetwork の一覧（skAdNetworkItems）を入れている。
+// Google が案内している一覧で、ときどき増える。出どころは
+// https://developers.google.com/admob/ios/3p-skadnetworks
 //
 // ライブラリのバージョンは 16.0.0 に固定する（package.json で ^ を付けない）。
 // 16.1.0 以降が使う Google の広告SDK は Kotlin 2.2/2.3 で作られていて、
-// Expo SDK 56（Kotlin 2.1）ではビルドが通らない。
+// Kotlin 2.1 の環境ではビルドが通らない。Expo SDK 57（React Native 0.86）も
+// Kotlin 2.1.20 のままなので、固定は外せない（2026-11 に確認）。
 
 import { useState, useSyncExternalStore } from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';

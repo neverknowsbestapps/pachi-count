@@ -28,6 +28,11 @@ import { Inter_700Bold } from '@expo-google-fonts/inter/700Bold';
 import { initAds, AdBanner } from './ads';
 import { noteSessionSavedAndMaybeRequestReview } from './review';
 import { LICENSES } from './licenses';
+import { shareTextFile, pickTextFile } from './backup';
+import {
+  formatDate, formatTime, onlyDigits, calcRate, calcDuration,
+  checkPlaying, checkReset, sortSessions, buildExportText, parseImportedSessions,
+} from './logic';
 import appConfig from './app.json';
 
 // --- Web 対応シム ---
@@ -108,18 +113,6 @@ const openUrl = async (url) => {
     Alert.alert('エラー', 'ページを開けませんでした');
   }
 };
-
-// 日付（"2026/5/26"）と時刻（"14:05"）の文字を作る。
-// 端末の書式まかせにすると設定次第で形が変わり、編集や取り込みで読めなくなるため自前で組み立てる
-const pad2 = (n) => String(n).padStart(2, '0');
-const formatDate = (d) => `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
-const formatTime = (d) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-
-// 数字の入力欄に入れる文字を数字だけにする（全角の数字は半角に直し、「-」「.」「,」などは落とす）
-const onlyDigits = (v) =>
-  String(v)
-    .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
-    .replace(/[^0-9]/g, '');
 
 // 設定のデフォルト値
 const DEFAULT_SETTINGS = {
@@ -246,7 +239,7 @@ const RADIUS = {
 const BUTTON_ACTIVE_OPACITY = 0.7;
 
 export default function App() {
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     Inter_600SemiBold,
     Inter_700Bold,
   });
@@ -257,6 +250,8 @@ export default function App() {
   const [sessions, setSessions] = useState([]);
   // 記録の読み込みに成功したか。失敗したまま書き込むと過去の記録を空で上書きしてしまう
   const sessionsLoaded = useRef(false);
+  // 一覧に出す並び（新しい日付が上）。保存先の並びは変えない
+  const sortedSessions = useMemo(() => sortSessions(sessions), [sessions]);
 
   // グローバル設定
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
@@ -290,6 +285,8 @@ export default function App() {
 
   // 編集画面
   const [editDraft, setEditDraft] = useState({});
+  // 編集を始めたときの中身（戻るときに、直した所があるかを比べる）
+  const editOriginal = useRef('');
   const updateEditDraft = (key, value) => setEditDraft((prev) => ({ ...prev, [key]: value }));
 
   // 機種名・店舗名の入力履歴
@@ -370,6 +367,8 @@ export default function App() {
       if (screen === SCREEN.HOME) return false;
       if (screen === SCREEN.PLAYING) {
         handleAbort(); // 中断の確認を出す
+      } else if (screen === SCREEN.EDIT) {
+        handleLeaveEdit(); // 直した所があれば確認を出す
       } else if (screen === SCREEN.RESET) {
         setScreen(SCREEN.PLAYING);
       } else if (screen === SCREEN.DATA || screen === SCREEN.ABOUT) {
@@ -384,7 +383,9 @@ export default function App() {
       return true;
     });
     return () => sub.remove();
-  }, [screen]);
+    // 中断・編集の確認は「いまの入力」を見て決めるので、描き直しのたびに登録し直す
+    // （画面が変わったときだけだと、画面を開いた時点の空の入力を見て確認なしで捨ててしまう）
+  });
 
   // 設定の数字は入力欄を離れたときに保存するが、打ち替えたままタブや戻る操作で
   // 画面を離れると入力欄を離れた扱いにならない。設定画面を出るときにも保存する
@@ -476,6 +477,32 @@ export default function App() {
     } catch (_) {}
   };
 
+  // 入力履歴から1件を消す（候補の長押し。打ち間違いを残さないため）
+  const handleRemoveName = (kind, name) => {
+    Alert.alert(
+      '候補から削除しますか？',
+      name,
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: '削除する',
+          style: 'destructive',
+          onPress: async () => {
+            const machineNames = kind === 'machine'
+              ? machineNameHistory.filter((v) => v !== name) : machineNameHistory;
+            const storeNames = kind === 'store'
+              ? storeNameHistory.filter((v) => v !== name) : storeNameHistory;
+            setMachineNameHistory(machineNames);
+            setStoreNameHistory(storeNames);
+            try {
+              await AsyncStorage.setItem(NAMES_KEY, JSON.stringify({ machineNames, storeNames }));
+            } catch (_) {}
+          },
+        },
+      ]
+    );
+  };
+
   // AsyncStorageからデータを読み込む
   const loadSessions = async () => {
     try {
@@ -548,41 +575,14 @@ export default function App() {
 
   // 保存できる値がそろっているか確かめる。そろっていれば数値をまとめて返し、だめなら警告して null
   const validatePlaying = () => {
-    const ballsNum = parseInt(ballsUsed, 10);
-    const parsedEndRotation = parseInt(endRotation, 10);
-    const startRotationNum = parseInt(startRotation, 10);
-
-    if (isNaN(startRotationNum)) {
-      Alert.alert('入力エラー', '開始時の回転数を入力してください');
+    const values = checkPlaying({
+      startRotation, endRotation, ballsUsed, accumulatedRotations, accumulatedBalls,
+    });
+    if (values.error) {
+      Alert.alert('入力エラー', values.error);
       return null;
     }
-    // リセット（大当たり）や「続きから遊技」の直後は、それまでの累積がある。
-    // その場合は今の区間が空でも保存できるようにする（空の欄は「この区間は 0」とみなす）
-    const segmentBalls = isNaN(ballsNum) ? 0 : ballsNum;
-    if (segmentBalls < 0 || accumulatedBalls + segmentBalls <= 0) {
-      Alert.alert('入力エラー', '使用玉数を入力してください');
-      return null;
-    }
-    const endMissing = !endRotation.trim() || isNaN(parsedEndRotation);
-    if (endMissing && accumulatedRotations <= 0) {
-      Alert.alert('入力エラー', '現在の回転数を入力してください');
-      return null;
-    }
-    const endRotationNum = endMissing ? startRotationNum : parsedEndRotation;
-    if (endRotationNum < startRotationNum) {
-      Alert.alert('入力エラー', '現在の回転数は開始時の値より大きい値を入力してください');
-      return null;
-    }
-
-    // 合計回転数・合計玉数（累積 + 現セグメント）
-    const rotationsNum = accumulatedRotations + Math.max(0, endRotationNum - startRotationNum);
-    const totalBallsNum = accumulatedBalls + segmentBalls;
-
-    if (rotationsNum <= 0) {
-      Alert.alert('入力エラー', '回転数が0回です。回転していない場合は中断してください');
-      return null;
-    }
-    return { startRotationNum, endRotationNum, rotationsNum, totalBallsNum };
+    return values;
   };
 
   // 遊技終了・保存（playing → home）
@@ -704,7 +704,7 @@ export default function App() {
     const [year = '', month = '', day = ''] = (item.date || '').split('/');
     const [sh = '', sm = ''] = (item.startTime || '').split(':');
     const [eh = '', em = ''] = (item.endTime || '').split(':');
-    setEditDraft({
+    const draft = {
       machineName: item.machineName || '',
       storeName: item.storeName || '',
       machineNumber: item.machineNumber || '',
@@ -719,8 +719,26 @@ export default function App() {
       endHour: eh,
       endMinute: em,
       id: item.id,
-    });
+    };
+    editOriginal.current = JSON.stringify(draft);
+    setEditDraft(draft);
     setScreen(SCREEN.EDIT);
+  };
+
+  // 編集画面から戻る。直した所があれば、捨てる前に確かめる
+  const handleLeaveEdit = () => {
+    if (JSON.stringify(editDraft) === editOriginal.current) {
+      setScreen(SCREEN.HOME);
+      return;
+    }
+    Alert.alert(
+      '変更を破棄しますか？',
+      undefined,
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        { text: '破棄する', style: 'destructive', onPress: () => setScreen(SCREEN.HOME) },
+      ]
+    );
   };
 
   // 編集内容を保存する
@@ -844,9 +862,7 @@ export default function App() {
     lines.push('');
     lines.push(`総回転数: ${item.rotations.toLocaleString()}`);
     lines.push(`総使用玉数: ${item.ballsUsed.toLocaleString()}`);
-    const rate = item.ballsUsed > 0
-      ? ((item.rotations / item.ballsUsed) * settings.rateBalls).toFixed(1)
-      : '--';
+    const rate = calcRate(item.rotations, item.ballsUsed, settings.rateBalls);
     lines.push(`${settings.rateBalls}玉あたり回転数: ${rate}`);
     lines.push('');
     lines.push('#パチカウント');
@@ -862,79 +878,21 @@ export default function App() {
     }
   };
 
-  // すべての記録を JSON の文字にして共有する
+  // すべての記録をファイルにして渡す（保存先・送り先は利用者が選ぶ）
   const handleExportSessions = async () => {
     const base = await getSessionsForWrite();
     if (base === null) return;
     try {
-      await Share.share({
-        message: JSON.stringify({ app: 'pachi-count', version: 1, sessions: base }),
-      });
+      const stamp = formatDate(new Date()).split('/').map((v) => v.padStart(2, '0')).join('');
+      await shareTextFile(`pachi-count-${stamp}.json`, buildExportText(base));
     } catch (_) {
-      Alert.alert('エラー', '共有に失敗しました');
+      Alert.alert('エラー', '書き出しに失敗しました');
     }
   };
 
-  // 貼り付けられた文字を検査して、記録の配列にして返す（取り込めない中身なら null）
-  // 書き出した形（{ sessions: [...] }）と、記録の配列そのものの両方を受け付ける
-  const parseImportedSessions = (text) => {
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch (_) {
-      return null;
-    }
-    const list = Array.isArray(data)
-      ? data
-      : (data && Array.isArray(data.sessions) ? data.sessions : null);
-    if (!list || list.length === 0) return null;
-
-    const isCount = (v) => typeof v === 'number' && isFinite(v) && v >= 0;
-    const isText = (v, max) => v === undefined || (typeof v === 'string' && v.length <= max);
-    const isTime = (v) => v === '--' || (typeof v === 'string' && /^\d{1,2}:\d{2}$/.test(v));
-    const ids = new Set();
-    const result = [];
-    for (const s of list) {
-      if (!s || typeof s !== 'object') return null;
-      if (typeof s.id !== 'string' || s.id === '' || ids.has(s.id)) return null;
-      if (typeof s.date !== 'string' || !/^\d{1,4}\/\d{1,2}\/\d{1,2}$/.test(s.date)) return null;
-      if (!isTime(s.startTime) || !isTime(s.endTime)) return null;
-      if (!isCount(s.rotations) || !isCount(s.ballsUsed)) return null;
-      if (s.startRotation !== undefined && !isCount(s.startRotation)) return null;
-      if (s.endRotation !== undefined && !isCount(s.endRotation)) return null;
-      if (!isText(s.machineName, 50) || !isText(s.storeName, 50)) return null;
-      if (!isText(s.machineNumber, 5) || !isText(s.memo, 200)) return null;
-      ids.add(s.id);
-      // 知っている項目だけを取り出す（余計な項目は持ち込まない）
-      result.push({
-        id: s.id,
-        date: s.date,
-        startTime: s.startTime,
-        endTime: s.endTime,
-        machineName: s.machineName || '',
-        storeName: s.storeName || '',
-        machineNumber: s.machineNumber || '',
-        startRotation: s.startRotation,
-        endRotation: s.endRotation,
-        rotations: s.rotations,
-        ballsUsed: s.ballsUsed,
-        memo: s.memo || '',
-      });
-    }
-    return result;
-  };
-
-  // 記録を取り込む（1回目は貼り付け欄を出す。2回目で中身を検査して置き換える）
-  const handleImportSessions = () => {
-    if (!showImport) {
-      setShowImport(true);
-      return;
-    }
-    if (!importText.trim()) {
-      Alert.alert('入力エラー', '書き出したデータを貼り付けてください');
-      return;
-    }
-    const imported = parseImportedSessions(importText);
+  // 取り込む文字を検査して、確認のうえ今の記録と置き換える
+  const confirmImport = (text) => {
+    const imported = parseImportedSessions(text);
     if (imported === null) {
       Alert.alert('入力エラー', '取り込めるデータではありません');
       return;
@@ -964,6 +922,26 @@ export default function App() {
     );
   };
 
+  // 書き出したファイルを選んで取り込む
+  const handleImportFile = async () => {
+    try {
+      const text = await pickTextFile();
+      if (text === null) return; // 選ばずに閉じた
+      confirmImport(text);
+    } catch (_) {
+      Alert.alert('エラー', 'ファイルを読み込めませんでした');
+    }
+  };
+
+  // 貼り付け欄の文字を取り込む（以前の版で文字として書き出したデータ用）
+  const handleImportPasted = () => {
+    if (!importText.trim()) {
+      Alert.alert('入力エラー', '書き出したデータを貼り付けてください');
+      return;
+    }
+    confirmImport(importText);
+  };
+
   // セッション削除
   const handleDeleteSession = (id) => {
     Alert.alert(
@@ -991,7 +969,7 @@ export default function App() {
     );
   };
 
-  // すべての記録を削除する（設定・入力履歴は残す）
+  // すべての記録を削除する（機種名・店舗名の入力履歴も消す。設定は残す）
   const handleClearSessions = () => {
     Alert.alert(
       'すべての記録を削除しますか？',
@@ -1006,6 +984,9 @@ export default function App() {
               await AsyncStorage.removeItem(STORAGE_KEY);
               sessionsLoaded.current = true; // 空にした状態が正しい中身になる
               setSessions([]);
+              await AsyncStorage.removeItem(NAMES_KEY).catch(() => {});
+              setMachineNameHistory([]);
+              setStoreNameHistory([]);
               setScreen(SCREEN.HOME);
             } catch (_) {
               Alert.alert('エラー', 'データの削除に失敗しました');
@@ -1060,19 +1041,11 @@ export default function App() {
     setBallsUsed(String(Math.max(0, current + amount)));
   };
 
-  // リセット画面を開く
+  // リセット画面を開く（今の区間の回転数が分からないときは、先に入れてもらう）
   const handleOpenReset = () => {
-    // この区間の回転数が分からないまま玉数だけを累積すると、回転率が実際より低くなる。
-    // 玉を使っているのに現在の回転数が空・開始より小さいときは、先に入れてもらう
-    const parsedEnd = parseInt(endRotation, 10);
-    const parsedStart = parseInt(startRotation, 10);
-    const parsedBalls = parseInt(ballsUsed, 10);
-    if (isNaN(parsedEnd) && !isNaN(parsedBalls) && parsedBalls > 0) {
-      Alert.alert('入力エラー', '現在の回転数を入力してください');
-      return;
-    }
-    if (!isNaN(parsedEnd) && !isNaN(parsedStart) && parsedEnd < parsedStart) {
-      Alert.alert('入力エラー', '現在の回転数は開始時の値より大きい値を入力してください');
+    const segment = checkReset({ startRotation, endRotation, ballsUsed });
+    if (segment.error) {
+      Alert.alert('入力エラー', segment.error);
       return;
     }
     setNewResetRotation('');
@@ -1081,21 +1054,18 @@ export default function App() {
 
   // リセット確定：現セグメントの回転数を累積して新しい開始回転数をセット
   const handleConfirmReset = () => {
-    if (!newResetRotation.trim() || isNaN(Number(newResetRotation))) {
+    if (!newResetRotation.trim() || isNaN(parseInt(newResetRotation, 10))) {
       Alert.alert('入力エラー', 'リセット後の回転数を入力してください');
       return;
     }
+    const segment = checkReset({ startRotation, endRotation, ballsUsed });
+    if (segment.error) {
+      Alert.alert('入力エラー', segment.error);
+      return;
+    }
     // ここまでのセグメントの回転数・玉数を累積に加算
-    // endRotation が空欄（parseInt が NaN）でも累積を壊さないよう isNaN で判定する
-    const parsedEnd = parseInt(endRotation, 10);
-    const parsedStart = parseInt(startRotation, 10);
-    const segmentRotations =
-      !isNaN(parsedEnd) && !isNaN(parsedStart)
-        ? Math.max(0, parsedEnd - parsedStart)
-        : 0;
-    const segmentBalls = Math.max(0, parseInt(ballsUsed, 10) || 0);
-    setAccumulatedRotations((prev) => prev + segmentRotations);
-    setAccumulatedBalls((prev) => prev + segmentBalls);
+    setAccumulatedRotations((prev) => prev + segment.segmentRotations);
+    setAccumulatedBalls((prev) => prev + segment.segmentBalls);
 
     // 新しい開始回転数で続行・現在の回転数は空欄・使用玉数の表示は0にリセット
     setStartRotation(newResetRotation);
@@ -1104,20 +1074,6 @@ export default function App() {
     setNewResetRotation('');
     setEditingStart(false);
     setScreen(SCREEN.PLAYING);
-  };
-
-  // 開始時刻〜終了時刻から所要時間を計算（"HH:MM" 文字列）
-  const calcDuration = (start, end) => {
-    if (!start || !end || start === '--' || end === '--') return '';
-    const [sh, sm] = start.split(':').map(Number);
-    const [eh, em] = end.split(':').map(Number);
-    if ([sh, sm, eh, em].some(isNaN)) return '';
-    let mins = (eh * 60 + em) - (sh * 60 + sm);
-    // 終了が開始より前なら翌日とみなす（22:00〜0:30 など）
-    if (mins < 0) mins += 24 * 60;
-    const h = Math.floor(mins / 60);
-    const m = mins % 60;
-    return `${h}時間${m}分`;
   };
 
   // 累積込みの合計回転数を計算するヘルパー
@@ -1132,16 +1088,14 @@ export default function App() {
   const calcRotationRate = () => {
     const totalBalls = accumulatedBalls + (parseFloat(ballsUsed) || 0);
     const totalRotations = calcTotalRotations();
-    if (totalBalls > 0 && totalRotations > 0) {
-      return ((totalRotations / totalBalls) * settings.rateBalls).toFixed(1);
-    }
-    return '--';
+    return calcRate(totalRotations, totalBalls, settings.rateBalls);
   };
 
   // ========================================
   // ホーム画面
   // ========================================
-  if (!fontsLoaded) return null;
+  // フォントを読み込めなかったときは、端末の標準フォントのまま表示を続ける（真っ白で止めない）
+  if (!fontsLoaded && !fontError) return null;
 
   if (screen === SCREEN.HOME) {
     return withTheme(
@@ -1157,7 +1111,7 @@ export default function App() {
         ) : (
           // 記録一覧
           <FlatList
-            data={sessions}
+            data={sortedSessions}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.listContent}
             renderItem={({ item }) => (
@@ -1170,9 +1124,7 @@ export default function App() {
                 <View style={styles.cardHero}>
                   <View style={styles.cardHeroLeft}>
                     <Text style={styles.cardRateValue}>
-                      {item.ballsUsed > 0
-                        ? ((item.rotations / item.ballsUsed) * settings.rateBalls).toFixed(1)
-                        : '--'}
+                      {calcRate(item.rotations, item.ballsUsed, settings.rateBalls)}
                     </Text>
                     <Text style={styles.cardRateLabel}>{settings.rateBalls}玉あたり</Text>
                   </View>
@@ -1236,9 +1188,7 @@ export default function App() {
       return null;
     }
     const duration = calcDuration(item.startTime, item.endTime);
-    const rate = item.ballsUsed > 0
-      ? ((item.rotations / item.ballsUsed) * settings.rateBalls).toFixed(1)
-      : '--';
+    const rate = calcRate(item.rotations, item.ballsUsed, settings.rateBalls);
 
     return withTheme(
       <View style={styles.container}>
@@ -1321,7 +1271,7 @@ export default function App() {
         <ScreenHeader
           title="記録を編集"
           leftLabel="戻る"
-          onLeftPress={() => setScreen(SCREEN.HOME)}
+          onLeftPress={handleLeaveEdit}
         />
         <ScrollView showsVerticalScrollIndicator={false}>
           <Text style={styles.label}>機種名</Text>
@@ -1615,7 +1565,8 @@ export default function App() {
         <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={styles.settingsGroup}>
             <SettingsLink label="記録を書き出す" onPress={handleExportSessions} />
-            <SettingsLink label="記録を取り込む" onPress={() => setShowImport(true)} border />
+            <SettingsLink label="ファイルから取り込む" onPress={handleImportFile} border />
+            <SettingsLink label="貼り付けて取り込む" onPress={() => setShowImport(true)} border />
           </View>
           {showImport ? (
             <>
@@ -1629,7 +1580,7 @@ export default function App() {
                 autoCorrect={false}
                 textAlignVertical="top"
               />
-              <AppButton label="取り込む" onPress={handleImportSessions} />
+              <AppButton label="取り込む" onPress={handleImportPasted} />
             </>
           ) : null}
           <View style={[styles.settingsGroup, styles.settingsGroupSpaced]}>
@@ -1781,8 +1732,8 @@ export default function App() {
   // ========================================
   // 台情報の欄（遊技中に機種名の行を押すと、画面の下から出る）
   // ========================================
-  // 機種名・店舗名の入力履歴から、入力中の文字を含むものを最大5件だけ候補に出す
-  const renderNameChips = (history, value, onSelect) => {
+  // 機種名・店舗名の入力履歴から、入力中の文字を含むものを最大5件だけ候補に出す（長押しで履歴から消す）
+  const renderNameChips = (history, value, onSelect, onRemove) => {
     const matches = history
       .filter((n) => n !== value && n.toLowerCase().includes(value.trim().toLowerCase()))
       .slice(0, 5);
@@ -1795,6 +1746,7 @@ export default function App() {
             style={styles.chip}
             activeOpacity={BUTTON_ACTIVE_OPACITY}
             onPress={() => onSelect(name)}
+            onLongPress={() => onRemove(name)}
           >
             <Text style={styles.chipText} numberOfLines={1}>{name}</Text>
           </TouchableOpacity>
@@ -1840,7 +1792,7 @@ export default function App() {
               maxLength={50}
               returnKeyType="next"
             />
-            {renderNameChips(machineNameHistory, machineName, setMachineName)}
+            {renderNameChips(machineNameHistory, machineName, setMachineName, (n) => handleRemoveName('machine', n))}
 
             <Text style={styles.label}>店舗名</Text>
             <TextInput
@@ -1850,7 +1802,7 @@ export default function App() {
               maxLength={50}
               returnKeyType="next"
             />
-            {renderNameChips(storeNameHistory, storeName, setStoreName)}
+            {renderNameChips(storeNameHistory, storeName, setStoreName, (n) => handleRemoveName('store', n))}
 
             <Text style={styles.label}>台番号</Text>
             <TextInput

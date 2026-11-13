@@ -7,7 +7,10 @@
     "@expo/metro-runtime": "~57.0.16",
     "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "~57.0.26",
+    "expo-file-system": "~57.0.7",
     "expo-font": "~57.0.4",
+    "expo-sharing": "~57.0.26",
+    "expo-splash-screen": "~57.0.11",
     "expo-status-bar": "~57.0.1",
     "expo-store-review": "~57.0.3",
     "react": "19.2.3",
@@ -20,7 +23,8 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "test": "node --test tests/logic.test.mjs"
   },
   "private": true
 }

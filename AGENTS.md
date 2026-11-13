@@ -20,6 +20,8 @@
 - **JavaScript のみ**（TypeScript は使わない）
 - `@react-native-async-storage/async-storage` 2.2.0（ローカル永続化）
 - `expo-store-review`（3回目の保存後にレビュー依頼を一度だけ出す。`review.js`）
+- `expo-file-system` / `expo-sharing`（記録をファイルで書き出す・取り込む。`backup.js`）
+- `expo-splash-screen`（起動画面の地の色をライト／ダークで分ける。`app.json` の設定だけで、コードからは呼ばない）
 - 外部UIライブラリ・ナビゲーションライブラリは**使わない**
 
 > ⚠️ Expo はバージョンで API が大きく変わる。コードを書く前に必ず
@@ -33,6 +35,9 @@
 # 開発サーバー起動（スマホの Expo Go で QR を読み取る）
 npx expo start
 
+# 計算と検査（logic.js）の自動テスト。部品は足さず Node のテストの仕組みを使う
+node --test tests/logic.test.mjs
+
 # 構文チェック（JSX を含むので @babel/parser で確認する）
 node -e "const fs=require('fs');require('@babel/parser').parse(fs.readFileSync('App.js','utf8'),{sourceType:'module',plugins:['jsx']});console.log('SYNTAX OK')"
 ```
@@ -45,7 +50,7 @@ node -e "const fs=require('fs');require('@babel/parser').parse(fs.readFileSync('
 ## アーキテクチャ
 
 ### 単一ファイル構成
-すべてのコードは **`App.js`（約3,000行）に集約**されている。ほかは広告（`ads.js`）・レビュー依頼（`review.js`）と、ライセンス一覧のデータ（`licenses.js`。`node scripts/make-licenses.mjs` で作る。部品を足したり版を上げたりしたら作り直す）だけ。意図的に1ファイルで保守している（初心者が全体を把握しやすくするため）。安易にファイル分割しない。
+すべてのコードは **`App.js`（約3,000行）に集約**されている。ほかは広告（`ads.js`）・レビュー依頼（`review.js`）・ファイルでの書き出しと取り込み（`backup.js`）・画面を持たない計算と検査（`logic.js`。自動テストで確かめるために切り出している。React・React Native・AsyncStorage を持ち込まない）と、ライセンス一覧のデータ（`licenses.js`。`node scripts/make-licenses.mjs` で作る。部品を足したり版を上げたりしたら作り直す）だけ。意図的に1ファイルで保守している（初心者が全体を把握しやすくするため）。安易にファイル分割しない。
 
 ### 画面遷移（React Navigation 不使用）
 `screen` という state 1つで画面を切り替える。画面名は `SCREEN` 定数で管理：
@@ -56,12 +61,14 @@ node -e "const fs=require('fs');require('@babel/parser').parse(fs.readFileSync('
 | `PLAYING` | 遊技中のメイン操作画面。開始回転数もここで入れる。台情報（機種名・店舗名・台番号・メモ）は機種名の行を押すと下から出る欄で入れる |
 | `RESET` | 大当たり後の「リセットして続ける」 |
 | `SETTINGS` | 設定（下のタブの「設定」）。基準玉数・ボタン値・表示。変えたらその場で保存（数字は入力欄を離れたとき） |
-| `DATA` | 設定 → データ管理（書き出し・取り込み・全削除） |
+| `DATA` | 設定 → データ管理（ファイルへ書き出し・ファイルから取り込み・貼り付けて取り込み・全削除。全削除は機種名・店舗名の入力履歴も消す） |
 | `ABOUT` | 設定 → このアプリについて（プライバシーポリシー・ライセンス・バージョン） |
 | `LICENSES` / `LICENSE` | ライセンス一覧と、1件の全文 |
 | `DETAIL` | 記録の詳細表示 |
 | `EDIT` | 記録の編集 |
 
+- `HOME` の一覧は新しい日付が上（`sortSessions`）。保存先の並びは変えず、出すときにだけ並べる
+- `EDIT` では総回転数・総使用玉数も直せる。直した所があるまま戻ろうとしたら確認を出す
 - `HOME` と `SETTINGS` の下にはタブ（`TabBar`）を出す。真ん中の丸（直径64）で `PLAYING` へ。丸はタブから上にはみ出すので、すぐ上の広告に重ならないよう間をあけている（重ねると AdMob の規約違反）。記録が0件の間は丸から4秒に1回波紋を出し、その分だけ間を広げる（1件保存すると止まる）
 - プライバシーポリシーはストアの規約でアプリ内からも開ける必要がある（`ABOUT`）。設定にはパチマネージャー（姉妹アプリ・収支の記録）のストアへのリンクも置く
 - 起動時は `HOME`。途中経過があれば `PLAYING` に復帰する
@@ -120,7 +127,7 @@ node -e "const fs=require('fs');require('@babel/parser').parse(fs.readFileSync('
 ### 再利用コンポーネント（`App()` の直後に定義）
 - `AppButton({ label, onPress, variant })` — `variant="secondary"` で見た目を切替
 - `DetailRow({ label, value, highlight })` — 詳細画面の「ラベル＋値」行
-- `renderNameChips(...)` — 機種名・店舗名の入力履歴を候補として並べる（台情報の欄）
+- `renderNameChips(...)` — 機種名・店舗名の入力履歴を候補として並べる（台情報の欄）。長押しで履歴から消す
 - `TabBar({ active, onRecords, onStart, onSettings })` — 下のタブ。アイコンは部品を足さず View で描く（`ListIcon` / `SlidersIcon`）
 - `SettingsLink({ label, onPress, border })` — 設定の「押すと次の画面へ」の1行
 
@@ -151,6 +158,9 @@ rate = (rotations / ballsUsed) * settings.rateBalls
 - 文字数上限：機種名・店舗名 50 / 台番号 5 / 数値入力 7桁 / メモ 200
 - 回転数 0 回・開始回転数なしでの保存はブロック
 - 編集画面では存在しない日付（2/31 等）を弾く。「終了 < 開始」の時刻は翌日の終了とみなす（所要時間も 24 時間を足して計算）
+- 数字の入力欄は `onlyDigits` を通す（全角は半角に直し、数字以外は落とす）
+- 日付・時刻の文字は `formatDate` / `formatTime` で作る（端末の書式まかせにしない）
+- 保存とリセットの検査は `checkPlaying` / `checkReset`（`logic.js`）。直したらテストも直す
 - 記録を書き込む前は必ず `getSessionsForWrite()` で土台の一覧を取る（読み込み失敗のまま空で上書きしないため）
 
 ---
