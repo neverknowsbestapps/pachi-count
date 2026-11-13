@@ -109,6 +109,18 @@ const openUrl = async (url) => {
   }
 };
 
+// 日付（"2026/5/26"）と時刻（"14:05"）の文字を作る。
+// 端末の書式まかせにすると設定次第で形が変わり、編集や取り込みで読めなくなるため自前で組み立てる
+const pad2 = (n) => String(n).padStart(2, '0');
+const formatDate = (d) => `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
+const formatTime = (d) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+
+// 数字の入力欄に入れる文字を数字だけにする（全角の数字は半角に直し、「-」「.」「,」などは落とす）
+const onlyDigits = (v) =>
+  String(v)
+    .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+    .replace(/[^0-9]/g, '');
+
 // 設定のデフォルト値
 const DEFAULT_SETTINGS = {
   rateBalls: 250,
@@ -374,6 +386,16 @@ export default function App() {
     return () => sub.remove();
   }, [screen]);
 
+  // 設定の数字は入力欄を離れたときに保存するが、打ち替えたままタブや戻る操作で
+  // 画面を離れると入力欄を離れた扱いにならない。設定画面を出るときにも保存する
+  const prevScreen = useRef(screen);
+  useEffect(() => {
+    if (prevScreen.current === SCREEN.SETTINGS && screen !== SCREEN.SETTINGS) {
+      commitNumberSettings();
+    }
+    prevScreen.current = screen;
+  }, [screen]);
+
   // 遊技中の途中経過を消す（保存・中断のとき）
   const clearPlaying = () => AsyncStorage.removeItem(PLAYING_KEY).catch(() => {});
 
@@ -527,21 +549,26 @@ export default function App() {
   // 保存できる値がそろっているか確かめる。そろっていれば数値をまとめて返し、だめなら警告して null
   const validatePlaying = () => {
     const ballsNum = parseInt(ballsUsed, 10);
-    const endRotationNum = parseInt(endRotation, 10);
+    const parsedEndRotation = parseInt(endRotation, 10);
     const startRotationNum = parseInt(startRotation, 10);
 
     if (isNaN(startRotationNum)) {
       Alert.alert('入力エラー', '開始時の回転数を入力してください');
       return null;
     }
-    if (!ballsUsed.trim() || isNaN(ballsNum) || ballsNum <= 0) {
+    // リセット（大当たり）や「続きから遊技」の直後は、それまでの累積がある。
+    // その場合は今の区間が空でも保存できるようにする（空の欄は「この区間は 0」とみなす）
+    const segmentBalls = isNaN(ballsNum) ? 0 : ballsNum;
+    if (segmentBalls < 0 || accumulatedBalls + segmentBalls <= 0) {
       Alert.alert('入力エラー', '使用玉数を入力してください');
       return null;
     }
-    if (!endRotation.trim() || isNaN(endRotationNum)) {
+    const endMissing = !endRotation.trim() || isNaN(parsedEndRotation);
+    if (endMissing && accumulatedRotations <= 0) {
       Alert.alert('入力エラー', '現在の回転数を入力してください');
       return null;
     }
+    const endRotationNum = endMissing ? startRotationNum : parsedEndRotation;
     if (endRotationNum < startRotationNum) {
       Alert.alert('入力エラー', '現在の回転数は開始時の値より大きい値を入力してください');
       return null;
@@ -549,7 +576,7 @@ export default function App() {
 
     // 合計回転数・合計玉数（累積 + 現セグメント）
     const rotationsNum = accumulatedRotations + Math.max(0, endRotationNum - startRotationNum);
-    const totalBallsNum = accumulatedBalls + ballsNum;
+    const totalBallsNum = accumulatedBalls + segmentBalls;
 
     if (rotationsNum <= 0) {
       Alert.alert('入力エラー', '回転数が0回です。回転していない場合は中断してください');
@@ -568,18 +595,16 @@ export default function App() {
     if (base === null) return;
 
     const now = new Date();
-    const today = now.toLocaleDateString('ja-JP');
+    const today = formatDate(now);
     // 「続きから遊技」で始めた場合は元の記録を置き換える（同じ id のまま）
     const original = continueId ? base.find((s) => s.id === continueId) : null;
-    const newStartTime = startTime
-      ? startTime.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
-      : '--';
+    const newStartTime = startTime ? formatTime(startTime) : '--';
     const newSession = {
       id: original ? original.id : Date.now().toString(),
       date: today,
       // 同じ日の続きなら、元の記録の開始時刻を残す
       startTime: original && original.date === today ? original.startTime : newStartTime,
-      endTime: now.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }),
+      endTime: formatTime(now),
       machineName: machineName.trim(),
       storeName: storeName.trim(),
       machineNumber: machineNumber.trim(),
@@ -684,6 +709,8 @@ export default function App() {
       storeName: item.storeName || '',
       machineNumber: item.machineNumber || '',
       memo: item.memo || '',
+      rotations: String(item.rotations),
+      ballsUsed: String(item.ballsUsed),
       dateYear: year,
       dateMonth: month,
       dateDay: day,
@@ -698,6 +725,17 @@ export default function App() {
 
   // 編集内容を保存する
   const handleSaveEdit = async () => {
+    // 総回転数・総使用玉数の検証（打ち間違えた記録を後から直せるようにしている）
+    const rotations = parseInt(editDraft.rotations, 10);
+    const ballsUsed = parseInt(editDraft.ballsUsed, 10);
+    if (isNaN(rotations) || rotations <= 0) {
+      Alert.alert('入力エラー', '総回転数を正しく入力してください');
+      return;
+    }
+    if (isNaN(ballsUsed) || ballsUsed <= 0) {
+      Alert.alert('入力エラー', '総使用玉数を正しく入力してください');
+      return;
+    }
     // 日付の検証
     const year = parseInt(editDraft.dateYear, 10);
     const month = parseInt(editDraft.dateMonth, 10);
@@ -755,6 +793,8 @@ export default function App() {
             storeName: editDraft.storeName.trim(),
             machineNumber: editDraft.machineNumber.trim(),
             memo: (editDraft.memo || '').trim(),
+            rotations,
+            ballsUsed,
             date,
             startTime,
             endTime,
@@ -772,7 +812,9 @@ export default function App() {
 
   // 保存済みセッションから台情報・累積データを引き継いで続行
   const handleContinueSession = (item) => {
-    const rotation = String(item.endRotation);
+    // 取り込んだ記録には終了時の回転数がないものがある。そのときは開始時の回転数を入れてもらう
+    const hasEnd = typeof item.endRotation === 'number' && isFinite(item.endRotation);
+    const rotation = hasEnd ? String(item.endRotation) : '';
     resetForm();
     setMachineName(item.machineName || '');
     setStoreName(item.storeName || '');
@@ -784,6 +826,7 @@ export default function App() {
     setAccumulatedRotations(item.rotations);
     setAccumulatedBalls(item.ballsUsed);
     setContinueId(item.id);
+    setEditingStart(!hasEnd);
     setScreen(SCREEN.PLAYING);
   };
 
@@ -1019,6 +1062,19 @@ export default function App() {
 
   // リセット画面を開く
   const handleOpenReset = () => {
+    // この区間の回転数が分からないまま玉数だけを累積すると、回転率が実際より低くなる。
+    // 玉を使っているのに現在の回転数が空・開始より小さいときは、先に入れてもらう
+    const parsedEnd = parseInt(endRotation, 10);
+    const parsedStart = parseInt(startRotation, 10);
+    const parsedBalls = parseInt(ballsUsed, 10);
+    if (isNaN(parsedEnd) && !isNaN(parsedBalls) && parsedBalls > 0) {
+      Alert.alert('入力エラー', '現在の回転数を入力してください');
+      return;
+    }
+    if (!isNaN(parsedEnd) && !isNaN(parsedStart) && parsedEnd < parsedStart) {
+      Alert.alert('入力エラー', '現在の回転数は開始時の値より大きい値を入力してください');
+      return;
+    }
     setNewResetRotation('');
     setScreen(SCREEN.RESET);
   };
@@ -1295,12 +1351,39 @@ export default function App() {
           />
           <Text style={styles.memoCounter}>{(editDraft.memo || '').length} / 200</Text>
 
+          <View style={styles.editTimeRow}>
+            <View style={styles.editTimeItem}>
+              <Text style={styles.label}>総回転数</Text>
+              <View style={styles.timeRow}>
+                <TextInput
+                  style={styles.timeInput}
+                  value={editDraft.rotations}
+                  onChangeText={(v) => updateEditDraft('rotations', onlyDigits(v))}
+                  keyboardType="numeric"
+                  maxLength={7}
+                />
+              </View>
+            </View>
+            <View style={styles.editTimeItem}>
+              <Text style={styles.label}>総使用玉数</Text>
+              <View style={styles.timeRow}>
+                <TextInput
+                  style={styles.timeInput}
+                  value={editDraft.ballsUsed}
+                  onChangeText={(v) => updateEditDraft('ballsUsed', onlyDigits(v))}
+                  keyboardType="numeric"
+                  maxLength={7}
+                />
+              </View>
+            </View>
+          </View>
+
           <Text style={styles.label}>日付</Text>
           <View style={styles.dateRow}>
             <TextInput
               style={[styles.dateInput, styles.dateInputYear]}
               value={editDraft.dateYear}
-              onChangeText={(v) => updateEditDraft('dateYear', v)}
+              onChangeText={(v) => updateEditDraft('dateYear', onlyDigits(v))}
               keyboardType="numeric"
               maxLength={4}
               placeholder="2026"
@@ -1310,7 +1393,7 @@ export default function App() {
             <TextInput
               style={styles.dateInput}
               value={editDraft.dateMonth}
-              onChangeText={(v) => updateEditDraft('dateMonth', v)}
+              onChangeText={(v) => updateEditDraft('dateMonth', onlyDigits(v))}
               keyboardType="numeric"
               maxLength={2}
               placeholder="月"
@@ -1320,7 +1403,7 @@ export default function App() {
             <TextInput
               style={styles.dateInput}
               value={editDraft.dateDay}
-              onChangeText={(v) => updateEditDraft('dateDay', v)}
+              onChangeText={(v) => updateEditDraft('dateDay', onlyDigits(v))}
               keyboardType="numeric"
               maxLength={2}
               placeholder="日"
@@ -1335,7 +1418,7 @@ export default function App() {
                 <TextInput
                   style={styles.timeInput}
                   value={editDraft.startHour}
-                  onChangeText={(v) => updateEditDraft('startHour', v)}
+                  onChangeText={(v) => updateEditDraft('startHour', onlyDigits(v))}
                   keyboardType="numeric"
                   maxLength={2}
                   placeholder="時"
@@ -1345,7 +1428,7 @@ export default function App() {
                 <TextInput
                   style={styles.timeInput}
                   value={editDraft.startMinute}
-                  onChangeText={(v) => updateEditDraft('startMinute', v)}
+                  onChangeText={(v) => updateEditDraft('startMinute', onlyDigits(v))}
                   keyboardType="numeric"
                   maxLength={2}
                   placeholder="分"
@@ -1359,7 +1442,7 @@ export default function App() {
                 <TextInput
                   style={styles.timeInput}
                   value={editDraft.endHour}
-                  onChangeText={(v) => updateEditDraft('endHour', v)}
+                  onChangeText={(v) => updateEditDraft('endHour', onlyDigits(v))}
                   keyboardType="numeric"
                   maxLength={2}
                   placeholder="時"
@@ -1369,7 +1452,7 @@ export default function App() {
                 <TextInput
                   style={styles.timeInput}
                   value={editDraft.endMinute}
-                  onChangeText={(v) => updateEditDraft('endMinute', v)}
+                  onChangeText={(v) => updateEditDraft('endMinute', onlyDigits(v))}
                   keyboardType="numeric"
                   maxLength={2}
                   placeholder="分"
@@ -1394,7 +1477,7 @@ export default function App() {
       <TextInput
         style={[styles.settingsNumInput, small && styles.settingsNumInputSmall]}
         value={value}
-        onChangeText={onChange}
+        onChangeText={(v) => onChange(onlyDigits(v))}
         onBlur={commitNumberSettings}
         keyboardType="numeric"
         returnKeyType="done"
@@ -1684,7 +1767,7 @@ export default function App() {
         <TextInput
           style={styles.inputLarge}
           value={newResetRotation}
-          onChangeText={setNewResetRotation}
+          onChangeText={(v) => setNewResetRotation(onlyDigits(v))}
           keyboardType="numeric"
           maxLength={7}
           autoFocus
@@ -1810,7 +1893,7 @@ export default function App() {
         placeholder={placeholder}
         placeholderTextColor={colors.textMuted}
         value={value}
-        onChangeText={onChange}
+        onChangeText={(v) => onChange(onlyDigits(v))}
         keyboardType="numeric"
         maxLength={7}
         selectTextOnFocus={true}
@@ -1891,7 +1974,7 @@ export default function App() {
               <TextInput
                 style={styles.playingInput}
                 value={startRotation}
-                onChangeText={setStartRotation}
+                onChangeText={(v) => setStartRotation(onlyDigits(v))}
                 onBlur={commitStartRotation}
                 onSubmitEditing={commitStartRotation}
                 keyboardType="numeric"
